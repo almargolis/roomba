@@ -63,7 +63,13 @@ Tested with a Roomba 770 using the iRobot [serial cable](http://store.irobot.com
 
 **Serial port names by platform:**
 - **macOS:** `/dev/tty.usbserial-XXXXXXXX`
-- **Raspberry Pi / Linux:** `/dev/ttyUSB0`
+- **Raspberry Pi / Linux / Ubuntu:** `/dev/ttyUSB0`
+
+**Linux permissions:** On Ubuntu and other Linux distros, you need to be in the `dialout` group to access serial ports:
+
+    sudo usermod -aG dialout $USER
+
+Log out and back in (or reboot) for this to take effect. Without this you'll get `Permission denied` when connecting.
 
 If the Roomba does not connect properly, check the cable first, then check if the port is correct, and then check if the baud rate in create.py is correct.
 
