@@ -4,25 +4,20 @@
 # Simple tester for the Roomba Interface
 # from create.py
 #
-# Adjust your ROOMBA_PORT if necessary.
-# python game.py 
-# starts a pygame window from which the 
+# Usage: python game.py [port]
+#   port is optional - auto-detects if not provided.
+# Starts a pygame window from which the
 # Roomba can be controlled with w/a/s/d.
 # Use this file to play with the sensors.
-import os, sys
+import sys
 import pygame
 import create
 import time
+import math
 
-# Change the roomba port to whatever is on your
-# machine. On a Mac it's something like this.
-# On Linux it's usually tty.USB0 and on Win
-# its to serial port.
-ROOMBA_PORT = "/dev/tty.usbserial-DA017V6X"
+ROOMBA_PORT = sys.argv[1] if len(sys.argv) > 1 else None
 
-
-
-robot = create.Create(ROOMBA_PORT, BAUD_RATE=115200)
+robot = create.Create(ROOMBA_PORT)
 robot.toSafeMode()
 #robot.printSensors()
 
@@ -31,7 +26,31 @@ size = width, height = 800, 600
 screen = pygame.display.set_mode(size)
 pygame.display.set_caption('Roomba Test')
 
-img_roomba_top = pygame.image.load(os.path.join('img', 'roomba.png'))
+def draw_roomba(surface):
+	"""Draw a top-down roomba diagram onto a surface."""
+	cx, cy, radius = 290, 220, 180
+	# body
+	pygame.draw.circle(surface, (180, 180, 180), (cx, cy), radius)
+	pygame.draw.circle(surface, (100, 100, 100), (cx, cy), radius, 2)
+	# front bumper arc
+	pygame.draw.arc(surface, (60, 60, 60),
+		(cx - radius, cy - radius, radius*2, radius*2),
+		math.radians(-60), math.radians(60), 4)
+	# direction indicator
+	pygame.draw.circle(surface, (60, 60, 60), (cx, cy - radius + 30), 8)
+	# labels
+	label_font = pygame.font.SysFont("calibri", 12)
+	labels = [
+		("LB Left", (100, 120)), ("LB FL", (150, 46)), ("LB CL", (218, 4)),
+		("LB CR", (445, 4)), ("LB FR", (475, 38)), ("LB Right", (458, 100)),
+		("Wall IR:", (340, 380)), ("Wall Sig:", (340, 400)),
+		("L Bump:", (100, 380)), ("R Bump:", (100, 400)),
+		("Enc L:", (600, 380)), ("Enc R:", (600, 400)),
+		("Cliff L:", (600, 0)), ("Cliff FL:", (600, 19)),
+		("Cliff FR:", (600, 38)), ("Cliff R:", (600, 57)),
+	]
+	for text, pos in labels:
+		surface.blit(label_font.render(text, 1, (80, 80, 80)), pos)
 
 # Fill background
 background = pygame.Surface(screen.get_size())
@@ -75,8 +94,14 @@ def main():
 	robot.resetPose()
 	px, py, th = robot.getPose()
 
+	sensor_error = False
 	while True:
-		senses = robot.sensors([create.WALL_SIGNAL, create.WALL_IR_SENSOR, create.LEFT_BUMP, create.RIGHT_BUMP, create.ENCODER_LEFT, create.ENCODER_RIGHT, create.CLIFF_LEFT_SIGNAL, create.CLIFF_FRONT_LEFT_SIGNAL, create.CLIFF_FRONT_RIGHT_SIGNAL, create.CLIFF_RIGHT_SIGNAL, create.DIRT_DETECTED])
+		try:
+			senses = robot.sensors([create.WALL_SIGNAL, create.WALL_IR_SENSOR, create.LEFT_BUMP, create.RIGHT_BUMP, create.ENCODER_LEFT, create.ENCODER_RIGHT, create.CLIFF_LEFT_SIGNAL, create.CLIFF_FRONT_LEFT_SIGNAL, create.CLIFF_FRONT_RIGHT_SIGNAL, create.CLIFF_RIGHT_SIGNAL, create.DIRT_DETECTED])
+			sensor_error = False
+		except Exception:
+			sensor_error = True
+			senses = {}
 		update_roomba = False
 		for event in pygame.event.get():
 			if event.type == pygame.QUIT:
@@ -122,11 +147,11 @@ def main():
 						main_brush = 1
 					else:
 						main_brush = -1
-					
+
 				if event.key == pygame.K_v:
 					vacuum = 1
 					update_roomba = True
-					
+
 				if event.key == pygame.K_o:
 					if (pygame.key.get_mods() & pygame.KMOD_SHIFT):
 						side_brush = 1
@@ -151,7 +176,7 @@ def main():
 					update_roomba = True
 
 		if update_roomba == True:
-			#robot.sensors([create.POSE])		
+			#robot.sensors([create.POSE])
 			robot.go(robot_dir*FWD_SPEED,robot_rot*ROT_SPEED)
 			robot.motors(side_brush, main_brush, vacuum)
 			time.sleep(0.1)
@@ -159,48 +184,62 @@ def main():
 		# done with the actual roomba stuff
 		# now print.
 		screen.blit(background, (0, 0))
-		screen.blit(img_roomba_top, (0,0))
-		#Light Bump
-		screen.blit(font.render("{}".format(lb_left()), 1, (10, 10, 10)), (112, 136))
-		screen.blit(font.render("{}".format(lb_front_left()), 1, (10, 10, 10)), (159, 62))
-		screen.blit(font.render("{}".format(lb_center_left()), 1, (10, 10, 10)), (228, 19))
+		draw_roomba(screen)
 
-		screen.blit(font.render("{}".format(lb_center_right()), 1, (10, 10, 10)), (457, 19))
-		screen.blit(font.render("{}".format(lb_front_right()), 1, (10, 10, 10)), (484, 54))
-		screen.blit(font.render("{}".format(lb_right()), 1, (10, 10, 10)), (469, 115))
+		# helper to safely read a sensor value
+		def sv(key, default="--"):
+			return senses.get(key, default)
+
+		def safe_lb(func):
+			try:
+				return func()
+			except Exception:
+				return "--"
+
+		#Light Bump
+		screen.blit(font.render("{}".format(safe_lb(lb_left)), 1, (10, 10, 10)), (112, 136))
+		screen.blit(font.render("{}".format(safe_lb(lb_front_left)), 1, (10, 10, 10)), (159, 62))
+		screen.blit(font.render("{}".format(safe_lb(lb_center_left)), 1, (10, 10, 10)), (228, 19))
+
+		screen.blit(font.render("{}".format(safe_lb(lb_center_right)), 1, (10, 10, 10)), (457, 19))
+		screen.blit(font.render("{}".format(safe_lb(lb_front_right)), 1, (10, 10, 10)), (484, 54))
+		screen.blit(font.render("{}".format(safe_lb(lb_right)), 1, (10, 10, 10)), (469, 115))
 		#Wall Sensors
-		screen.blit(font.render("{}".format(senses[create.WALL_IR_SENSOR]), 1, (10, 10, 10)), (376, 396))
-		screen.blit(font.render("{}".format(senses[create.WALL_SIGNAL]), 1, (10, 10, 10)), (376, 416))
+		screen.blit(font.render("{}".format(sv(create.WALL_IR_SENSOR)), 1, (10, 10, 10)), (376, 396))
+		screen.blit(font.render("{}".format(sv(create.WALL_SIGNAL)), 1, (10, 10, 10)), (376, 416))
 		#Bumpers
-		screen.blit(font.render("{}".format(senses[create.LEFT_BUMP]), 1, (10, 10, 10)), (142, 396))
-		screen.blit(font.render("{}".format(senses[create.RIGHT_BUMP]), 1, (10, 10, 10)), (142, 416))
+		screen.blit(font.render("{}".format(sv(create.LEFT_BUMP)), 1, (10, 10, 10)), (142, 396))
+		screen.blit(font.render("{}".format(sv(create.RIGHT_BUMP)), 1, (10, 10, 10)), (142, 416))
 		#Encoders
-		screen.blit(font.render("{}".format(senses[create.ENCODER_LEFT]), 1, (10, 10, 10)), (635, 396))
-		screen.blit(font.render("{}".format(senses[create.ENCODER_RIGHT]), 1, (10, 10, 10)), (635, 416))
+		screen.blit(font.render("{}".format(sv(create.ENCODER_LEFT)), 1, (10, 10, 10)), (635, 396))
+		screen.blit(font.render("{}".format(sv(create.ENCODER_RIGHT)), 1, (10, 10, 10)), (635, 416))
 		#Cliff Sensors
-		screen.blit(font.render("{}".format(senses[create.CLIFF_LEFT_SIGNAL]), 1, (10, 10, 10)), (635, 16))
-		screen.blit(font.render("{}".format(senses[create.CLIFF_FRONT_LEFT_SIGNAL]), 1, (10, 10, 10)), (635, 35))
-		screen.blit(font.render("{}".format(senses[create.CLIFF_FRONT_RIGHT_SIGNAL]), 1, (10, 10, 10)), (635, 54))
-		screen.blit(font.render("{}".format(senses[create.CLIFF_RIGHT_SIGNAL]), 1, (10, 10, 10)), (635, 73))
+		screen.blit(font.render("{}".format(sv(create.CLIFF_LEFT_SIGNAL)), 1, (10, 10, 10)), (635, 16))
+		screen.blit(font.render("{}".format(sv(create.CLIFF_FRONT_LEFT_SIGNAL)), 1, (10, 10, 10)), (635, 35))
+		screen.blit(font.render("{}".format(sv(create.CLIFF_FRONT_RIGHT_SIGNAL)), 1, (10, 10, 10)), (635, 54))
+		screen.blit(font.render("{}".format(sv(create.CLIFF_RIGHT_SIGNAL)), 1, (10, 10, 10)), (635, 73))
 
 		screen.blit(font.render(" Fwd speed: {:04.2f} cm/sec (change with Up/Down)".format(FWD_SPEED), 1, (10, 10, 10)), (50, 450))
 		screen.blit(font.render(" Rot speed: {:04.2f} cm/sec".format(ROT_SPEED), 1, (10, 10, 10)), (50, 470))
-		
+
 		px, py, th = robot.getPose()
 		screen.blit(font.render("Estimated X-Position: {:04.2f} (cm from start)".format(px), 1, (10, 10, 10)), (450, 450))
 		screen.blit(font.render("Estimated Y-Position: {:04.2f} (cm from start)".format(py), 1, (10, 10, 10)), (450, 470))
 		screen.blit(font.render("  Estimated Rotation: {:03.2f} (in degree)".format(th), 1, (10, 10, 10)), (450, 490))
-		screen.blit(font.render("       Dirt Detected: {}".format(senses[create.DIRT_DETECTED]), 1, (10, 10, 10)), (450, 510))	
+		screen.blit(font.render("       Dirt Detected: {}".format(sv(create.DIRT_DETECTED)), 1, (10, 10, 10)), (450, 510))
+
+		if sensor_error:
+			screen.blit(font.render("WARNING: Incomplete sensor data (dust bin removed?)", 1, (200, 0, 0)), (200, 530))
 
 		screen.blit(font.render("Move Roomba with w/a/s/d, adjust speed with UP/DOWN, reset pos with SPACE, and ESC to quit.", 1, (10, 10, 10)), (10, 560))
 		screen.blit(font.render("o activates the sidebrush, m the main, v the vacuum. Holding shift could be used for reversing the the direction of the brushes.", 1, (10, 10, 10)), (10, 575))
 
 		pygame.display.flip()
-		
-if __name__ == '__main__': 
+
+if __name__ == '__main__':
 	try:
 		main()
-	except Error as err:
-		print (err)
+	except Exception as err:
+		print(err)
 	robot.go(0,0)
 	robot.close()

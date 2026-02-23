@@ -19,46 +19,71 @@
 #   1. Added support for dirt sensor, encoders, and light bump.
 #   2. Adjusted the size of the Roomba in WHEEL_SPAN
 #   3. getPose seems to be broken.
+#
+# Ported to Python 3 - Feb 2026
 
 import serial
+import glob
 import math
+import sys
 import time
 import datetime
-import thread
 import threading
 
+
+def find_port():
+    """Scan /dev/ for a likely Roomba serial port.
+    Returns the port path, or exits with an error message.
+    """
+    patterns = ['/dev/tty.usbserial-*', '/dev/ttyUSB*']
+    matches = []
+    for pat in patterns:
+        matches.extend(glob.glob(pat))
+    if len(matches) == 0:
+        print('Error: No Roomba serial port found.')
+        print('  Looked for:', ', '.join(patterns))
+        print('  Is the USB cable connected?')
+        sys.exit(1)
+    if len(matches) > 1:
+        print('Error: Multiple serial ports found:')
+        for m in matches:
+            print(' ', m)
+        print('  Please specify the port explicitly.')
+        sys.exit(1)
+    return matches[0]
+
 # some module-level definitions for the robot commands
-START = chr(128)    # already converted to bytes...
-BAUD = chr(129)     # + 1 byte
-CONTROL = chr(130)  # deprecated for Create
-SAFE = chr(131)
-FULL = chr(132)
-POWER = chr(133)
-SPOT = chr(134)     # Same for the Roomba and Create
-CLEAN = chr(135)    # Clean button - Roomba
-COVER = chr(135)    # Cover demo - Create
-MAX = chr(136)      # Roomba
-DEMO = chr(136)     # Create
-DRIVE = chr(137)    # + 4 bytes
-MOTORS = chr(138)   # + 1 byte
-LEDS = chr(139)     # + 3 bytes
-SONG = chr(140)     # + 2N+2 bytes, where N is the number of notes
-PLAY = chr(141)     # + 1 byte
-SENSORS = chr(142)  # + 1 byte
-CHANGE_TIME = chr(168)
-FORCESEEKINGDOCK = chr(143)  # same on Roomba and Create
+START = bytes([128])    # already converted to bytes...
+BAUD = bytes([129])     # + 1 byte
+CONTROL = bytes([130])  # deprecated for Create
+SAFE = bytes([131])
+FULL = bytes([132])
+POWER = bytes([133])
+SPOT = bytes([134])     # Same for the Roomba and Create
+CLEAN = bytes([135])    # Clean button - Roomba
+COVER = bytes([135])    # Cover demo - Create
+MAX = bytes([136])      # Roomba
+DEMO = bytes([136])     # Create
+DRIVE = bytes([137])    # + 4 bytes
+MOTORS = bytes([138])   # + 1 byte
+LEDS = bytes([139])     # + 3 bytes
+SONG = bytes([140])     # + 2N+2 bytes, where N is the number of notes
+PLAY = bytes([141])     # + 1 byte
+SENSORS = bytes([142])  # + 1 byte
+CHANGE_TIME = bytes([168])
+FORCESEEKINGDOCK = bytes([143])  # same on Roomba and Create
 # the above command is called "Cover and Dock" on the Create
-DRIVEDIRECT = chr(145)       # Create only
-STREAM = chr(148)       # Create only
-QUERYLIST = chr(149)       # Create only
-PAUSERESUME = chr(150)       # Create only
+DRIVEDIRECT = bytes([145])       # Create only
+STREAM = bytes([148])       # Create only
+QUERYLIST = bytes([149])       # Create only
+PAUSERESUME = bytes([150])       # Create only
 
 #### Sean
 
-SCRIPT = chr(152)
-ENDSCRIPT = chr(153)
-WAITDIST = chr(156)
-WAITANGLE = chr(157)
+SCRIPT = bytes([152])
+ENDSCRIPT = bytes([153])
+WAITDIST = bytes([156])
+WAITANGLE = bytes([157])
 
 # the four SCI modes
 # the code will try to keep track of which mode the system is in,
@@ -146,7 +171,7 @@ def modeStr( mode ):
     if mode == PASSIVE_MODE: return 'PASSIVE_MODE'
     if mode == SAFE_MODE: return 'SAFE_MODE'
     if mode == FULL_MODE: return 'FULL_MODE'
-    print 'Warning: unknown mode', mode, 'seen in modeStr'
+    print('Warning: unknown mode', mode, 'seen in modeStr')
     return 'UNKNOWN_MODE'
 
 #
@@ -154,16 +179,16 @@ def modeStr( mode ):
 #
 def _bytesOfR( r ):
     """ for looking at the raw bytes of a sensor reply, r """
-    print 'raw r is', r
+    print('raw r is', r)
     for i in range(len(r)):
-        print 'byte', i, 'is', ord(r[i])
-    print 'finished with formatR'
+        print('byte', i, 'is', r[i])
+    print('finished with formatR')
 
 def _bitOfByte( bit, byte ):
     """ returns a 0 or 1: the value of the 'bit' of 'byte' """
     if bit < 0 or bit > 7:
-        print 'Your bit of', bit, 'is out of range (0-7)'
-        print 'returning 0'
+        print('Your bit of', bit, 'is out of range (0-7)')
+        print('returning 0')
         return 0
     return ((byte >> bit) & 0x01)
 
@@ -171,7 +196,7 @@ def _toBinary( val, numbits ):
     """ prints numbits digits of val in binary """
     if numbits == 0:  return
     _toBinary( val>>1 , numbits-1 )
-    print (val & 0x01),  # print least significant bit
+    print(val & 0x01, end=' ')  # print least significant bit
 
 
 def _fromBinary( s ):
@@ -200,9 +225,9 @@ def _twosComplementInt2bytes( highByte, lowByte ):
     """ returns an int which has the same value
     as the twosComplement value stored in
     the two bytes passed in
-    
+
     the output range should be -32768 to 32767
-    
+
     chars or ints can be input, both will be
     truncated to 8 bits
     """
@@ -229,7 +254,7 @@ def _toTwosComplement2Bytes( value ):
     # if it's negative, I think it is this
     else:
         eqBitVal = (1<<16) + value
-    
+
     return ( (eqBitVal >> 8) & 0xFF, eqBitVal & 0xFF )
 
 #
@@ -239,7 +264,7 @@ class SensorFrame:
     """ the sensorFrame class is really a struct whose
     fields are filled in by sensorStatus
     """
-    
+
     def __init__(self):
         """ constructor -- set all fields to 0
         """
@@ -282,18 +307,11 @@ class SensorFrame:
         self.lightBumpFrontRight = 0
         self.lightBumpRight = 0
         self.dirt = 0
-    
+
     def __str__(self):
         """ returns a string with the information
         from this SensorFrame
         """
-        # there's probably a more efficient way to do this...
-        # perhaps just making it all + instead of the separate
-        # += would be more efficient
-        #
-        # actually, we should make a list and call ''.join(list)
-        # not that we will...
-        #
         s = ''
         s += 'casterDrop: ' + str(self.casterDrop) + '\n'
         s += 'leftWheelDrop: ' + str(self.leftWheelDrop) + '\n'
@@ -330,28 +348,28 @@ class SensorFrame:
         s += 'charge: ' + str(self.charge) + '\n'
         s += 'capacity: ' + str(self.capacity) + '\n'
         return s
-    
+
     def _toBinaryString(self):
         """ this converts the calling SensorFrame into a 26-byte
-        string of the format the roomba sends back
+        binary representation of the format the roomba sends back
         """
         # todo: handle the different subsets (frames) of sensor data
-        
+
         # here are the 26 bytes in list form
         slist = [0]*26
-        
+
         # First Frame
-        
+
         # byte 0: bumps and wheeldrops
         slist[0] = self.casterDrop << 4 | \
             self.leftWheelDrop << 3 | \
             self.rightWheelDrop << 2 | \
             self.leftBump << 1 | \
             self.rightBump
-        
+
         # byte 1: wall data
         slist[1] = self.wallSensor
-        
+
         # byte 2: cliff left
         slist[2] = self.leftCliff
         # byte 3: cliff front left
@@ -360,71 +378,71 @@ class SensorFrame:
         slist[4] = self.frontRightCliff
         # byte 5: cliff right
         slist[5] = self.rightCliff
-        
+
         # byte 6: virtual wall
         slist[6] = self.virtualWall
-        
+
         # byte 7: motor overcurrents
         slist[7] = self.driveLeft << 4 | \
             self.driveRight << 3 | \
             self.mainBrush << 2 | \
             self.vacuum << 1 | \
             self.sideBrush
-        
+
         # byte 8: dirt detector left
         slist[8] = self.leftDirt
         # byte 9: dirt detector left
         slist[9] = self.rightDirt
-        
+
         # Second Frame
-        
+
         # byte 10: remote control command
         slist[10] = self.remoteControlCommand
-        
+
         # byte 11: buttons
         slist[11] = self.powerButton << 3 | \
             self.spotButton << 2 | \
             self.cleanButton << 1 | \
             self.maxButton
-        
+
         # bytes 12, 13: distance
         highVal, lowVal = _toTwosComplement2Bytes( self.distance )
         slist[12] = highVal
         slist[13] = lowVal
-        
+
         # bytes 14, 15: angle
         highVal, lowVal = _toTwosComplement2Bytes( self.rawAngle )
         slist[14] = highVal
         slist[15] = lowVal
-        
+
         # Third Frame
-        
+
         # byte 16: charging state
         slist[16] = self.chargingState
-        
+
         # bytes 17, 18: voltage
         slist[17] = (self.voltage >> 8) & 0xFF
         slist[18] = self.voltage & 0xFF
-        
+
         # bytes 19, 20: current
         highVal, lowVal = _toTwosComplement2Bytes( self.current )
         slist[19] = highVal
         slist[20] = lowVal
-        
+
         # byte 21: temperature
         slist[21] = self.temperature
-        
+
         # bytes 22, 23: charge
         slist[22] = (self.charge >> 8) & 0xFF
         slist[23] = self.charge & 0xFF
-        
+
         # bytes 24, 25: capacity
         slist[24] = (self.capacity >> 8) & 0xFF
         slist[25] = self.capacity & 0xFF
-        
-        # convert to a string
-        s = ''.join([ chr(x) for x in slist ])
-        
+
+        # convert to bytes
+        s = bytes(slist)
+
         return s
 
 
@@ -436,30 +454,26 @@ class Create:
     """ the Create class is an abstraction of the iRobot Create's
     SCI interface, including communication and a bit
     of processing of the strings passed back and forth
-    
+
     when you create an object of type Create, the code
     will try to open a connection to it - so, it will fail
     if it's not attached!
     """
     # to do: check if we can start in other modes...
-    def __init__(self, PORT, BAUD_RATE=115200, startingMode=SAFE_MODE):
+    def __init__(self, PORT=None, BAUD_RATE=115200, startingMode=SAFE_MODE):
         """ the constructor which tries to open the
-        connection to the robot at port PORT
+        connection to the robot at port PORT.
+        If PORT is None, auto-detect the serial port.
         """
         _debug = False
-        # to do: find the shortest safe serial timeout value...
-        # to do: use the timeout to do more error checking than
-        #        is currently done...
-        #
-        # the -1 here is because windows starts counting from 1
-        # in the hardware control panel, but not in pyserial, it seems
-        
-        # if PORT is the string 'simulated' (or any string for the moment)
-        # we use our SRSerial class
-        print 'PORT is', PORT
-        if type(PORT) == type('string'):
+
+        if PORT is None:
+            PORT = find_port()
+
+        print('PORT is', PORT)
+        if isinstance(PORT, str):
             if PORT == 'sim':
-                print 'In simulated mode...'
+                print('In simulated mode...')
                 self.ser = 'sim'; # SRSerial('mapSquare.txt')
             else:
                 # for Mac/Linux - use whole port name
@@ -469,25 +483,25 @@ class Create:
         else:
             # print 'In Windows mode...'
             self.ser = serial.Serial(PORT-1, baudrate=BAUD_RATE, timeout=0.5)
-        
+
         # did the serial port actually open?
         if self.ser != 'sim' and self.ser.isOpen():
-            print 'Serial port did open, presumably to a roomba...'
+            print('Serial port did open, presumably to a roomba...')
         else:
-            print 'Serial port did NOT open, check the'
-            print '  - port number'
-            print '  - physical connection'
-            print '  - baud rate of the roomba (it\'s _possible_, if unlikely,'
-            print '              that it might be set to 19200 instead'
-            print '              of the default 57600 - removing and'
-            print '              reinstalling the battery should reset it.'
-        
+            print('Serial port did NOT open, check the')
+            print('  - port number')
+            print('  - physical connection')
+            print('  - baud rate of the roomba (it\'s _possible_, if unlikely,')
+            print('              that it might be set to 19200 instead')
+            print('              of the default 57600 - removing and')
+            print('              reinstalling the battery should reset it.')
+
         # our OI mode
         self.sciMode = OFF_MODE
 
         # our sensor dictionary, currently empty
         self.sensord = {}
-        
+
         # here are the variables that constitute the robot's
         # estimated odometry, thr is theta in radians...
         # these are updated by integrateNextOdometricStep
@@ -498,35 +512,35 @@ class Create:
         self.rightEncoder = -1
         self.leftEncoder_old = -1
         self.rightEncoder_old = -1
-        
+
         time.sleep(0.3)
         self._start()  # go to passive mode - want to do this
         # regardless of the final mode we'd like to be in...
         time.sleep(0.3)
-        
+
         if (startingMode == SAFE_MODE):
-            print 'Putting the robot into safe mode...'
+            print('Putting the robot into safe mode...')
             self.toSafeMode()
-        
+
         if (startingMode == FULL_MODE):
-            print 'Putting the robot into full mode...'
+            print('Putting the robot into full mode...')
             self.toSafeMode()
             time.sleep(0.3)
             self.toFullMode()
-        
+
         # We need to read the angle and distance sensors so that
         # their values clear out!
         time.sleep(0.25)
         #self.sensors(6) # read all sensors to establish the sensord dictionary
         self.setPose(0,0,0)
-    
+
     _debug = False
-    
+
     def _write(self, byte):
-        if self._debug==True:
-            print ord(byte)
+        if self._debug:
+            print(byte[0])
         self.ser.write(byte)
-    
+
     def getPose(self, dist='cm', angle='deg'):
         """ getPose returns the current estimate of the
         robot's global pose
@@ -538,15 +552,15 @@ class Create:
             x = self.xPose/10.0; y = self.yPose/10.0
         else:
             x = self.xPose; y = self.yPose
-            
+
         if angle == 'deg':
             th = math.degrees(self.thrPose)
         else:
             th = self.thrPose
-            
+
         return (x,y,th)
-    
-    
+
+
     def setPose(self, x, y, th, dist='cm', angle='deg'):
         """ setPose sets the internal odometry to the input values
         x: global x in mm
@@ -559,26 +573,26 @@ class Create:
             self.xPose = x*10.0; self.yPose = y*10.0
         else:
             self.xPose = x; self.yPose = y
-            
+
         if angle == 'deg':
             self.thrPose = math.radians(th)
         else:
             self.thrPose = th
-    
-    
+
+
     def resetPose(self):
         """ resetPose simply sets the internal odometry to 0,0,0
         """
         self.setPose(0.0,0.0,0.0)
-    
+
     def _getEncoderDelta(self, oldEnc, newEnc):
         #encoder wrap around at 2^16
-        #check if the step is bigger than half the 
+        #check if the step is bigger than half the
         #possible range and treat this as wraparound
         delta = newEnc-oldEnc
-        if delta< -65536/2:
+        if delta < -65536//2:
             delta = (newEnc+65536)-oldEnc
-        if delta> 65536/2:
+        if delta > 65536//2:
             delta = newEnc-(oldEnc+65536)
         return delta
 
@@ -593,18 +607,18 @@ class Create:
         left_mm = left_diff / TICK_PER_MM;
         right_mm = right_diff / TICK_PER_MM;
 
-        distance = (left_mm + right_mm) / 2.0;        
+        distance = (left_mm + right_mm) / 2.0;
         dAngle = (right_mm - left_mm) / WHEEL_SPAN
         dAngle *= ANGULAR_ERROR
         self.thrPose += dAngle
-        
+
         if self.thrPose > 100*math.pi:
             self.thrPose -= 101*math.pi
         if self.thrPose < -100*math.pi:
             self.thrPose += 101*math.pi
 
         self.xPose += distance * math.cos(self.thrPose)
-        self.yPose += distance * math.sin(self.thrPose)        
+        self.yPose += distance * math.sin(self.thrPose)
 
         self.leftEncoder_old = self.leftEncoder
         self.rightEncoder_old = self.rightEncoder
@@ -631,7 +645,7 @@ class Create:
         # perhaps there's nothing to do...
         if distance == 0 and rawAngle == 0:
             return
-        print rawAngle
+        print(rawAngle)
         # then again, maybe there is something to do...
         dthr = math.radians(rawAngle)  # angle traveled
         d = distance              # distance traveled
@@ -677,7 +691,7 @@ class Create:
         self.thrPose += dthr
         #print 'final pose', self.xPose, self.yPose, self.thrPose
         return
-    
+
     def setWheelVelocities( self, left_cm_sec, right_cm_sec ):
         """ sends velocities of each wheel independently
         left_cm_sec:  left  wheel velocity in cm/sec (capped at +- 50)
@@ -692,23 +706,23 @@ class Create:
         rightHighVal, rightLowVal = _toTwosComplement2Bytes( int(right_cm_sec*10) )
         # send these bytes and set the stored velocities
         self._write( DRIVEDIRECT )
-        self._write( chr(rightHighVal) )
-        self._write( chr(rightLowVal) )
-        self._write( chr(leftHighVal) )
-        self._write( chr(leftLowVal) )
-    
+        self._write( bytes([rightHighVal]) )
+        self._write( bytes([rightLowVal]) )
+        self._write( bytes([leftHighVal]) )
+        self._write( bytes([leftLowVal]) )
+
     def stop(self):
         """ stop calls go(0,0) """
         self.go(0,0)
         # we've gotta update pose information
         foo = self.sensors([POSE])
-        
+
     def motors ( self, side_brush = 0, main_brush = 0, vacuum = 0):
         if (side_brush > 1):
             side_brush = 1
         elif (side_brush < -1):
             side_brush = -1
-        
+
         if (main_brush > 1):
             main_brush = 1
         elif (main_brush < -1):
@@ -718,15 +732,15 @@ class Create:
             vacuum = 1
         elif (vacuum < 0):
             vacuum = 0
-            
-        byteToWrite = chr((16 if main_brush < 0  else 0) | 
+
+        byteToWrite = bytes([(16 if main_brush < 0  else 0) |
                      (8  if side_brush < 0  else 0) |
                      (4  if main_brush != 0 else 0) |
                      (2  if vacuum != 0     else 0) |
-                     (1  if side_brush > 0  else 0))
+                     (1  if side_brush > 0  else 0)])
         self._write( MOTORS )
         self._write( byteToWrite)
-    
+
     def go( self, cm_per_sec=0, deg_per_sec=0 ):
         """ go(cmpsec, degpsec) sets the robot's velocity to
         cmpsec centimeters per second
@@ -748,14 +762,14 @@ class Create:
             vel_mm_sec = math.fabs(rad_per_sec) * (WHEEL_SPAN/2.0)
             # send it off to the robot
             self._drive( vel_mm_sec, 0, dirstr )
-        
+
         elif deg_per_sec == 0:
             # just handle forward/backward translation
             vel_mm_sec = 10.0*cm_per_sec
             big_radius = 32767
             # send it off to the robot
             self._drive( vel_mm_sec, big_radius )
-        
+
         else:
             # move in the appropriate arc
             rad_per_sec = math.radians(deg_per_sec)
@@ -765,9 +779,9 @@ class Create:
             if radius_mm > 32767: radius_mm = 32767
             if radius_mm < -32767: radius_mm = -32767
             self._drive( vel_mm_sec, radius_mm )
-        
+
         return
-    
+
     def _start(self):
         """ changes from OFF_MODE to PASSIVE_MODE """
         self._write( START )
@@ -775,7 +789,7 @@ class Create:
         time.sleep(0.25)
         # change the mode we think we're in...
         return
-    
+
     def close(self):
         """ tries to shutdown the robot as kindly as possible, by
         clearing any remaining odometric data
@@ -791,12 +805,12 @@ class Create:
         time.sleep(0.1)
         self.ser.close()
         return
-    
+
     def _closeSer(self):
         """ just disconnects the serial port """
         self.ser.close()
         return
-    
+
     def _openSer(self):
         """ opens the port again """
         self.ser.open()
@@ -812,28 +826,28 @@ class Create:
 
         # first, they should be ints
         #   in case they're being generated mathematically
-        if type(roomba_mm_sec) != type(42):
+        if not isinstance(roomba_mm_sec, int):
             roomba_mm_sec = int(roomba_mm_sec)
-        if type(roomba_radius_mm) != type(42):
+        if not isinstance(roomba_radius_mm, int):
             roomba_radius_mm = int(roomba_radius_mm)
-        
+
         # we check that the inputs are within limits
         # if not, we cap them there
         if roomba_mm_sec < -500:
             roomba_mm_sec = -500
         if roomba_mm_sec > 500:
             roomba_mm_sec = 500
-        
+
         # if the radius is beyond the limits, we go straight
         # it doesn't really seem to go straight, however...
         if roomba_radius_mm < -2000:
             roomba_radius_mm = 32768
         if roomba_radius_mm > 2000:
-            roomba_radius_mm = 32768        
+            roomba_radius_mm = 32768
         # get the two bytes from the velocity
         # these come back as numbers, so we will chr them
         velHighVal, velLowVal = _toTwosComplement2Bytes( roomba_mm_sec )
-        
+
         # get the two bytes from the radius in the same way
         # note the special cases
         if roomba_radius_mm == 0:
@@ -842,17 +856,17 @@ class Create:
             else: # default is 'CCW' (turning left)
                 roomba_radius_mm = 1
         radiusHighVal, radiusLowVal = _toTwosComplement2Bytes( roomba_radius_mm )
-        
+
         #print 'bytes are', velHighVal, velLowVal, radiusHighVal, radiusLowVal
-        
+
         # send these bytes and set the stored velocities
         self._write( DRIVE )
-        self._write( chr(velHighVal) )
-        self._write( chr(velLowVal) )
-        self._write( chr(radiusHighVal) )
-        self._write( chr(radiusLowVal) )
+        self._write( bytes([velHighVal]) )
+        self._write( bytes([velLowVal]) )
+        self._write( bytes([radiusHighVal]) )
+        self._write( bytes([radiusLowVal]) )
 
-    
+
     def setLEDs(self, power_color, power_intensity, play, advance ):
         """ The setLEDs method sets each of the three LEDs, from left to right:
         the power LED, the play LED, and the status LED.
@@ -870,26 +884,26 @@ class Create:
         except TypeError:
             power = 128
             powercolor = 128
-            print 'Type excpetion caught in setAbsoluteLEDs in roomba.py'
-            print 'Your power_color or power_intensity was not of type int.'
+            print('Type exception caught in setAbsoluteLEDs in roomba.py')
+            print('Your power_color or power_intensity was not of type int.')
         if power < 0: power = 0
         if power > 255: power = 255
         if powercolor < 0: powercolor = 0
         if powercolor > 255: powercolor = 255
         # create the first byte
         #firstByteVal = (status << 4) | (spot << 3) | (clean << 2) | (max << 1) | dirtdetect
-        firstByteVal =  (advance << 3) | (play << 1) 
-        
+        firstByteVal =  (advance << 3) | (play << 1)
+
         # send these as bytes
         # print 'bytes are', firstByteVal, powercolor, power
         self._write( LEDS )
-        self._write( chr(firstByteVal) )
-        self._write( chr(powercolor) )
-        self._write( chr(power) )
-        
+        self._write( bytes([firstByteVal]) )
+        self._write( bytes([powercolor]) )
+        self._write( bytes([power]) )
+
         return
 
-    
+
     #
     # DO NOT CALL THIS FUNCTION!
     #    call readSensors instead - it will integrate odometry
@@ -901,15 +915,15 @@ class Create:
         """ gets back a raw string of sensor data
         which then can be used to create a SensorFrame
         """
-        if type(packetnumber) != type(1):
+        if not isinstance(packetnumber, int):
             packetnumber = 6
-        
+
         if packetnumber < 0 or packetnumber > 6:
             packetnumber = 6
-        
+
         self._write( SENSORS )
-        self._write( chr(packetnumber) )
-        
+        self._write( bytes([packetnumber]) )
+
         if packetnumber == 0:
             r = self.ser.read(size=26)
         if packetnumber == 1:
@@ -924,11 +938,11 @@ class Create:
             r = self.ser.read(size=12)
         if packetnumber == 6:
             r = self.ser.read(size=52)
-        
-        r = [ ord(c) for c in r ]   # convert to ints
+
+        r = list(r)   # bytes iteration already yields ints in Python 3
         return r
-    
-    
+
+
     def _getRawSensorDataAsList(self, listofsensors):
         """ gets the chosen sensors
         and returns the raw bytes, as a string
@@ -936,24 +950,24 @@ class Create:
         """
         numberOfSensors = len(listofsensors)
         self._write( QUERYLIST )
-        self._write( chr(numberOfSensors) )
+        self._write( bytes([numberOfSensors]) )
         resultLength = 0
         for sensornum in listofsensors:
-            self._write( chr(sensornum) )
+            self._write( bytes([sensornum]) )
             resultLength += SENSOR_DATA_WIDTH[sensornum]
 
         r = self.ser.read(size=resultLength)
-        r = [ ord(c) for c in r ]   # convert to ints
+        r = list(r)   # bytes iteration already yields ints in Python 3
         #print 'r is ', r
         return r
 
-    
+
     def seekDock(self):
         """ sends the force-seeking-dock signal
         """
         self.demo(1)
 
-    
+
     def demo(self, demoNumber=-1):
         """ runs one of the built-in demos for Create
         if demoNumber is
@@ -976,19 +990,19 @@ class Create:
         """
         if (demoNumber < -1 or demoNumber > 9):
             demoNumber = -1 # stop current demo
-        
+
         self._write( DEMO )
         if demoNumber < 0 or demoNumber > 9:
             # invalid values are equivalent to stopping
-            self._write( chr(255) ) # -1
+            self._write( bytes([255]) ) # -1
         else:
-            self._write( chr(demoNumber) )
+            self._write( bytes([demoNumber]) )
 
-    
+
     def setSong(self, songNumber, songDataList):
         """ this stores a song to roomba's memory to play later
         with the playSong command
-        
+
         songNumber must be between 0 and 15 (inclusive)
         songDataList is a list of (note, duration) pairs (up to 16)
         note is the midi note number, from 31 to 127
@@ -996,57 +1010,57 @@ class Create:
         duration is from 0 to 255 in 1/64ths of a second
         """
         # any notes to play?
-        if type(songDataList) != type([]) and type(songDataList) != type(()):
-            print 'songDataList was', songDataList
-            return 
-        
-        if len(songDataList) < 1:
-            print 'No data in the songDataList'
+        if not isinstance(songDataList, (list, tuple)):
+            print('songDataList was', songDataList)
             return
-        
+
+        if len(songDataList) < 1:
+            print('No data in the songDataList')
+            return
+
         if songNumber < 0: songNumber = 0
         if songNumber > 15: songNumber = 15
-        
+
         # indicate that a song is coming
         self._write( SONG )
-        self._write( chr(songNumber) )
-        
+        self._write( bytes([songNumber]) )
+
         L = min(len(songDataList), 16)
-        self._write( chr(L) )
-        
+        self._write( bytes([L]) )
+
         # loop through the notes, up to 16
         for note in songDataList[:L]:
             # make sure its a tuple, or else we rest for 1/4 second
-            if type(note) == type( () ):
+            if isinstance(note, tuple):
                 #more error checking here!
-                self._write( chr(note[0]) )  # note number
-                self._write( chr(note[1]) )  # duration
+                self._write( bytes([note[0]]) )  # note number
+                self._write( bytes([note[1]]) )  # duration
             else:
-                self._write( chr(30) )   # a rest note
-                self._write( chr(16) )   # 1/4 of a second
-                
+                self._write( bytes([30]) )   # a rest note
+                self._write( bytes([16]) )   # 1/4 of a second
+
         return
 
 
     def playSong(self, list_of_notes):
         """ The input to <tt>playSong</tt> should be specified as a list
-        of pairs of [ note_number, note_duration ] format. Thus, 
+        of pairs of [ note_number, note_duration ] format. Thus,
         r.playSong( [(60,8),(64,8),(67,8),(72,8)] ) plays a quick C chord.
         """
         # implemented by setting song #1 to the notes and then playing it
         self.setSong(1, list_of_notes)
         self.playSongNumber(1)
 
-    
+
     def playSongNumber(self, songNumber):
         """ plays song songNumber """
         if songNumber < 0: songNumber = 0
         if songNumber > 15: songNumber = 15
-        
+
         self._write( PLAY )
-        self._write( chr(songNumber) )
-        
-    
+        self._write( bytes([songNumber]) )
+
+
     def playNote(self, noteNumber, duration, songNumber=0):
         """ plays a single note as a song (at songNumber)
         duration is in 64ths of a second (1-255)
@@ -1055,79 +1069,79 @@ class Create:
         # set the song
         self.setSong(songNumber, [(noteNumber,duration)])
         self.playSongNumber(songNumber)
-        
-    
+
+
     def _getLower5Bits( self, r ):
         """ r is one byte as an integer """
         return [ _bitOfByte(4,r), _bitOfByte(3,r), _bitOfByte(2,r), _bitOfByte(1,r), _bitOfByte(0,r) ]
-    
+
     def _getOneBit( self, r ):
         """ r is one byte as an integer """
         if r == 1:  return 1
         else:       return 0
-    
+
     def _getOneByteUnsigned( self, r ):
         """ r is one byte as an integer """
         return r
-    
+
     def _getOneByteSigned( self, r ):
         """ r is one byte as a signed integer """
         return _twosComplementInt1byte( r )
-    
+
     def _getTwoBytesSigned( self, r1, r2 ):
         """ r1, r2 are two bytes as a signed integer """
         return _twosComplementInt2bytes( r1, r2 )
-    
+
     def _getTwoBytesUnsigned( self, r1, r2 ):
         """ r1, r2 are two bytes as an unsigned integer """
         return r1 << 8 | r2
-    
+
     def _getButtonBits( self, r ):
         """ r is one byte as an integer """
         return [ _bitOfByte(2,r), _bitOfByte(0,r) ]
-    
-    
+
+
     def _setNextDataFrame(self):
         """ This function _asks_ the robot to collect ALL of
         the sensor data into the next packet to send back.
         """
         self._write( SENSORS )
-        self._write( chr(6) )
-        
+        self._write( bytes([6]) )
+
     def _getNextDataFrame(self):
         """ This function then gets back ALL of
-        the sensor data and organizes it into the sensor 
+        the sensor data and organizes it into the sensor
         dictionary, sensord.
         """
         r = self.ser.read(size=52)
-        r = [ ord(c) for c in r ]
+        r = list(r)   # bytes iteration already yields ints in Python 3
         #return self._readSensorList(r)
-    
+
     def _rawSend( self, listofints ):
         for x in listofints:
-            self._write( chr(x) )
-    
+            self._write( bytes([x]) )
+
     def _rawRecv( self ):
         nBytesWaiting = self.ser.inWaiting()
         #print 'nBytesWaiting is', nBytesWaiting
         r = self.ser.read(size=nBytesWaiting)
-        r = [ ord(x) for x in r ]
+        r = list(r)   # bytes iteration already yields ints in Python 3
         #print 'r is', r
         return r
-    
+
     def _rawRecvStr( self ):
         nBytesWaiting = self.ser.inWaiting()
         #print 'nBytesWaiting is', nBytesWaiting
         r = self.ser.read(size=nBytesWaiting)
         return r
-    
+
     def sensors( self, list_of_sensors_to_poll=6 ):
         """ this function updates the robot's currently maintained
         state of its robot sensors for those sensors requested
         If none are requested, then all of the sensors are updated
         (which takes a bit more time...)
         """
-        if type(list_of_sensors_to_poll) == type([]):
+        if isinstance(list_of_sensors_to_poll, list):
             # first, we change any pieces of sensor values to
             # the single digit that is required here
             distangle = 0
@@ -1136,7 +1150,7 @@ class Create:
                 # should check if they're already there
                 list_of_sensors_to_poll.append(DISTANCE)
                 list_of_sensors_to_poll.append(ANGLE)
-                
+
             if LEFT_BUMP in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(LEFT_BUMP)
                 if BUMPS_AND_WHEEL_DROPS not in list_of_sensors_to_poll:
@@ -1146,42 +1160,42 @@ class Create:
                 list_of_sensors_to_poll.remove(RIGHT_BUMP)
                 if BUMPS_AND_WHEEL_DROPS not in list_of_sensors_to_poll:
                     list_of_sensors_to_poll.append(BUMPS_AND_WHEEL_DROPS)
-                    
+
             if RIGHT_WHEEL_DROP in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(RIGHT_WHEEL_DROP)
                 if BUMPS_AND_WHEEL_DROPS not in list_of_sensors_to_poll:
                     list_of_sensors_to_poll.append(BUMPS_AND_WHEEL_DROPS)
-                    
+
             if LEFT_WHEEL_DROP in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(LEFT_WHEEL_DROP)
                 if BUMPS_AND_WHEEL_DROPS not in list_of_sensors_to_poll:
-                    list_of_sensors_to_poll.append(BUMPS_AND_WHEEL_DROPS) 
-                    
+                    list_of_sensors_to_poll.append(BUMPS_AND_WHEEL_DROPS)
+
             if CENTER_WHEEL_DROP in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(CENTER_WHEEL_DROP)
                 if BUMPS_AND_WHEEL_DROPS not in list_of_sensors_to_poll:
                     list_of_sensors_to_poll.append(BUMPS_AND_WHEEL_DROPS)
-                    
+
             if LEFT_WHEEL_OVERCURRENT in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(LEFT_WHEEL_OVERCURRENT)
                 if LSD_AND_OVERCURRENTS not in list_of_sensors_to_poll:
                     list_of_sensors_to_poll.append(LSD_AND_OVERCURRENTS)
-                    
+
             if RIGHT_WHEEL_OVERCURRENT in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(RIGHT_WHEEL_OVERCURRENT)
                 if LSD_AND_OVERCURRENTS not in list_of_sensors_to_poll:
                     list_of_sensors_to_poll.append(LSD_AND_OVERCURRENTS)
-                    
+
             if ADVANCE_BUTTON in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(ADVANCE_BUTTON)
                 if BUTTONS not in list_of_sensors_to_poll:
                     list_of_sensors_to_poll.append(BUTTONS)
-            
+
             if PLAY_BUTTON in list_of_sensors_to_poll:
                 list_of_sensors_to_poll.remove(PLAY_BUTTON)
                 if BUTTONS not in list_of_sensors_to_poll:
                     list_of_sensors_to_poll.append(BUTTONS)
-                    
+
             r = self._getRawSensorDataAsList(list_of_sensors_to_poll)
 
         else:
@@ -1190,86 +1204,86 @@ class Create:
             # now, we set list_of_sensors_to_poll
             frameNumber = list_of_sensors_to_poll
             if frameNumber == 0:
-                list_of_sensors_to_poll = range(7,27)
+                list_of_sensors_to_poll = list(range(7,27))
             elif frameNumber == 1:
-                list_of_sensors_to_poll = range(7,17)
+                list_of_sensors_to_poll = list(range(7,17))
             elif frameNumber == 2:
-                list_of_sensors_to_poll = range(17,21)
+                list_of_sensors_to_poll = list(range(17,21))
             elif frameNumber == 3:
-                list_of_sensors_to_poll = range(21,27)
+                list_of_sensors_to_poll = list(range(21,27))
             elif frameNumber == 4:
-                list_of_sensors_to_poll = range(27,35)
+                list_of_sensors_to_poll = list(range(27,35))
             elif frameNumber == 5:
-                list_of_sensors_to_poll = range(35,43)
+                list_of_sensors_to_poll = list(range(35,43))
             else:
-                list_of_sensors_to_poll = range(7,43)
-                
+                list_of_sensors_to_poll = list(range(7,43))
+
         # change our dictionary
-        self._readSensorList(list_of_sensors_to_poll, r)      
+        self._readSensorList(list_of_sensors_to_poll, r)
         return self.sensord
-    
+
     def printSensors(self):
-        """ convenience function to show sensed data in d 
+        """ convenience function to show sensed data in d
         if d is None, the current self.sensord is used instead
         """
         self.sensors([LEFT_BUMP,RIGHT_BUMP,LEFT_WHEEL_DROP,RIGHT_WHEEL_DROP,CENTER_WHEEL_DROP,WALL_IR_SENSOR,CLIFF_LEFT,CLIFF_FRONT_LEFT,CLIFF_FRONT_RIGHT,CLIFF_RIGHT,VIRTUAL_WALL,LEFT_WHEEL_OVERCURRENT,RIGHT_WHEEL_OVERCURRENT,INFRARED_BYTE,PLAY_BUTTON,ADVANCE_BUTTON,POSE,CHARGING_STATE,VOLTAGE,CURRENT,BATTERY_TEMP,BATTERY_CHARGE,BATTERY_CAPACITY,WALL_SIGNAL,CLIFF_LEFT_SIGNAL,CLIFF_FRONT_LEFT_SIGNAL,CLIFF_FRONT_RIGHT_SIGNAL,CLIFF_RIGHT_SIGNAL,OI_MODE,SONG_NUMBER,SONG_PLAYING,CHARGING_SOURCES_AVAILABLE, ENCODER_LEFT, ENCODER_RIGHT,LIGHTBUMP_LEFT,LIGHTBUMP_FRONT_LEFT,LIGHTBUMP_CENTER_LEFT,LIGHTBUMP_CENTER_RIGHT,LIGHTBUMP_FRONT_RIGHT,LIGHTBUMP_RIGHT,LIGHTBUMP])
         d = self.sensord
         pose = d[POSE]
-        
-        print '                   LEFT_BUMP:', d[LEFT_BUMP]
-        print '                  RIGHT_BUMP:', d[RIGHT_BUMP]
-        print '             LEFT_WHEEL_DROP:', d[LEFT_WHEEL_DROP]
-        print '            RIGHT_WHEEL_DROP:', d[RIGHT_WHEEL_DROP]
-        print '           CENTER_WHEEL_DROP:', d[CENTER_WHEEL_DROP]
-        print '              WALL_IR_SENSOR:', d[WALL_IR_SENSOR]
-        print '                  CLIFF_LEFT:', d[CLIFF_LEFT]
-        print '            CLIFF_FRONT_LEFT:', d[CLIFF_FRONT_LEFT]
-        print '           CLIFF_FRONT_RIGHT:', d[CLIFF_FRONT_RIGHT]
-        print '                 CLIFF_RIGHT:', d[CLIFF_RIGHT]
-        print '                VIRTUAL_WALL:', d[VIRTUAL_WALL]
-        print '      LEFT_WHEEL_OVERCURRENT:', d[LEFT_WHEEL_OVERCURRENT]
-        print '     RIGHT_WHEEL_OVERCURRENT:', d[RIGHT_WHEEL_OVERCURRENT]
-        print '               INFRARED_BYTE:', d[INFRARED_BYTE]
-        print '                 PLAY_BUTTON:', d[PLAY_BUTTON]
-        print '              ADVANCE_BUTTON:', d[ADVANCE_BUTTON]
-        print '                 POSE X (cm):', pose[0]
-        print '                 POSE Y (cm):', pose[1]
-        print '               POSE TH (deg):', pose[2]
-        print '              CHARGING_STATE:', d[CHARGING_STATE]
-        print '                     VOLTAGE:', d[VOLTAGE]
-        print '                     CURRENT:', d[CURRENT]
-        print '                BATTERY_TEMP:', d[BATTERY_TEMP]
-        print '              BATTERY_CHARGE:', d[BATTERY_CHARGE]
-        print '            BATTERY_CAPACITY:', d[BATTERY_CAPACITY]
-        print '                 WALL_SIGNAL:', d[WALL_SIGNAL]
-        print '           CLIFF_LEFT_SIGNAL:', d[CLIFF_LEFT_SIGNAL]
-        print '     CLIFF_FRONT_LEFT_SIGNAL:', d[CLIFF_FRONT_LEFT_SIGNAL]
-        print '    CLIFF_FRONT_RIGHT_SIGNAL:', d[CLIFF_FRONT_RIGHT_SIGNAL]
-        print '          CLIFF_RIGHT_SIGNAL:', d[CLIFF_RIGHT_SIGNAL]
-        print '                     OI_MODE:', d[OI_MODE]
-        print '                 SONG_NUMBER:', d[SONG_NUMBER]
-        print '                SONG_PLAYING:', d[SONG_PLAYING]
-        print '                ENCODER_LEFT:', d[ENCODER_LEFT]
-        print '               ENCODER_RIGHT:', d[ENCODER_RIGHT]
-        print '                   LIGHTBUMP:', d[LIGHTBUMP]
-        print '              LIGHTBUMP_LEFT:', d[LIGHTBUMP_LEFT]
-        print '        LIGHTBUMP_FRONT_LEFT:', d[LIGHTBUMP_FRONT_LEFT]
-        print '       LIGHTBUMP_CENTER_LEFT:', d[LIGHTBUMP_CENTER_LEFT]
-        print '      LIGHTBUMP_CENTER_RIGHT:', d[LIGHTBUMP_CENTER_RIGHT]
-        print '      LIGHTBUMP_CENTER_RIGHT:', d[LIGHTBUMP_CENTER_RIGHT]
-        print '             LIGHTBUMP_RIGHT:', d[LIGHTBUMP_RIGHT]        
-        print '  CHARGING_SOURCES_AVAILABLE:', d[CHARGING_SOURCES_AVAILABLE]
+
+        print('                   LEFT_BUMP:', d[LEFT_BUMP])
+        print('                  RIGHT_BUMP:', d[RIGHT_BUMP])
+        print('             LEFT_WHEEL_DROP:', d[LEFT_WHEEL_DROP])
+        print('            RIGHT_WHEEL_DROP:', d[RIGHT_WHEEL_DROP])
+        print('           CENTER_WHEEL_DROP:', d[CENTER_WHEEL_DROP])
+        print('              WALL_IR_SENSOR:', d[WALL_IR_SENSOR])
+        print('                  CLIFF_LEFT:', d[CLIFF_LEFT])
+        print('            CLIFF_FRONT_LEFT:', d[CLIFF_FRONT_LEFT])
+        print('           CLIFF_FRONT_RIGHT:', d[CLIFF_FRONT_RIGHT])
+        print('                 CLIFF_RIGHT:', d[CLIFF_RIGHT])
+        print('                VIRTUAL_WALL:', d[VIRTUAL_WALL])
+        print('      LEFT_WHEEL_OVERCURRENT:', d[LEFT_WHEEL_OVERCURRENT])
+        print('     RIGHT_WHEEL_OVERCURRENT:', d[RIGHT_WHEEL_OVERCURRENT])
+        print('               INFRARED_BYTE:', d[INFRARED_BYTE])
+        print('                 PLAY_BUTTON:', d[PLAY_BUTTON])
+        print('              ADVANCE_BUTTON:', d[ADVANCE_BUTTON])
+        print('                 POSE X (cm):', pose[0])
+        print('                 POSE Y (cm):', pose[1])
+        print('               POSE TH (deg):', pose[2])
+        print('              CHARGING_STATE:', d[CHARGING_STATE])
+        print('                     VOLTAGE:', d[VOLTAGE])
+        print('                     CURRENT:', d[CURRENT])
+        print('                BATTERY_TEMP:', d[BATTERY_TEMP])
+        print('              BATTERY_CHARGE:', d[BATTERY_CHARGE])
+        print('            BATTERY_CAPACITY:', d[BATTERY_CAPACITY])
+        print('                 WALL_SIGNAL:', d[WALL_SIGNAL])
+        print('           CLIFF_LEFT_SIGNAL:', d[CLIFF_LEFT_SIGNAL])
+        print('     CLIFF_FRONT_LEFT_SIGNAL:', d[CLIFF_FRONT_LEFT_SIGNAL])
+        print('    CLIFF_FRONT_RIGHT_SIGNAL:', d[CLIFF_FRONT_RIGHT_SIGNAL])
+        print('          CLIFF_RIGHT_SIGNAL:', d[CLIFF_RIGHT_SIGNAL])
+        print('                     OI_MODE:', d[OI_MODE])
+        print('                 SONG_NUMBER:', d[SONG_NUMBER])
+        print('                SONG_PLAYING:', d[SONG_PLAYING])
+        print('                ENCODER_LEFT:', d[ENCODER_LEFT])
+        print('               ENCODER_RIGHT:', d[ENCODER_RIGHT])
+        print('                   LIGHTBUMP:', d[LIGHTBUMP])
+        print('              LIGHTBUMP_LEFT:', d[LIGHTBUMP_LEFT])
+        print('        LIGHTBUMP_FRONT_LEFT:', d[LIGHTBUMP_FRONT_LEFT])
+        print('       LIGHTBUMP_CENTER_LEFT:', d[LIGHTBUMP_CENTER_LEFT])
+        print('      LIGHTBUMP_CENTER_RIGHT:', d[LIGHTBUMP_CENTER_RIGHT])
+        print('      LIGHTBUMP_CENTER_RIGHT:', d[LIGHTBUMP_CENTER_RIGHT])
+        print('             LIGHTBUMP_RIGHT:', d[LIGHTBUMP_RIGHT])
+        print('  CHARGING_SOURCES_AVAILABLE:', d[CHARGING_SOURCES_AVAILABLE])
         return d
-    
+
     def _readSensorList(self, sensor_data_list, r):
         """ this returns the latest values from the particular
         sensors requested in the listofvalues
         """
-        
+
         if len(sensor_data_list) == 0:
-            print 'No data was read in _readSensorList.'
+            print('No data was read in _readSensorList.')
             return self.sensord
-        
+
         sensorDataInterpreter = [ None, # 0
                                   None, # 1
                                   None, # 2
@@ -1321,10 +1335,10 @@ class Create:
                                   self._getTwoBytesUnsigned, # 48 LIGHTBUMP_CENTER_LEFT
                                   self._getTwoBytesUnsigned, # 49 LIGHTBUMP_CENTER_RIGHT
                                   self._getTwoBytesUnsigned, # 50 LIGHTBUMP_FRONT_RIGHT
-                                  self._getTwoBytesUnsigned, # 51 LIGHTBUMP_RIGHT                                  
+                                  self._getTwoBytesUnsigned, # 51 LIGHTBUMP_RIGHT
                                   None # only 51 as of right now
                                   ]
-        
+
         startofdata = 0
         distance = 0
         angle = 0
@@ -1334,23 +1348,23 @@ class Create:
             width = SENSOR_DATA_WIDTH[sensorNum]
             dataGetter = sensorDataInterpreter[sensorNum]
             interpretedData = 0
-            
+
             if (width == 1):
                 if startofdata >= len(r):
-                    print "Incomplete Sensor Packet"
+                    if self._debug: print("Incomplete Sensor Packet")
                     break
                 else: interpretedData = dataGetter(r[startofdata])
             if (width == 2):
                 if startofdata >= len(r) - 1:
-                    print "Incomplete Sensor Packet"
+                    if self._debug: print("Incomplete Sensor Packet")
                     break
                 else: interpretedData = dataGetter(r[startofdata], r[startofdata+1] )
-                
+
             # add to our dictionary
             self.sensord[sensorNum] = interpretedData
-            
+
             # POSE = 100 - later
-            
+
             #LEFT_BUMP = 101
             #RIGHT_BUMP = 102
             #LEFT_WHEEL_DROP = 103
@@ -1362,28 +1376,28 @@ class Create:
                 self.sensord[RIGHT_WHEEL_DROP] = interpretedData[2]
                 self.sensord[LEFT_BUMP] = interpretedData[3]
                 self.sensord[RIGHT_BUMP] = interpretedData[4]
-                
+
             #LEFT_WHEEL_OVERCURRENT = 106
             #RIGHT_WHEEL_OVERCURRENT = 107
             if sensorNum == LSD_AND_OVERCURRENTS:
                 self.sensord[LEFT_WHEEL_OVERCURRENT] = interpretedData[0]
                 self.sensord[RIGHT_WHEEL_OVERCURRENT] = interpretedData[1]
-                
+
             #ADVANCE_BUTTON = 108
             #PLAY_BUTTON = 109
             if sensorNum == BUTTONS:
                 self.sensord[ADVANCE_BUTTON] = interpretedData[0]
                 self.sensord[PLAY_BUTTON] = interpretedData[1]
-            
+
             if sensorNum == DIRT_DETECTED:
                 self.sensord[DIRT_DETECTED] = interpretedData
-                
+
             # handle special cases
             if (sensorNum == DISTANCE):
                 distance = interpretedData
             if (sensorNum == ANGLE):
                 angle = interpretedData
-            
+
             if (sensorNum == ENCODER_LEFT):
                 self.leftEncoder = interpretedData
                 update_pose = True
@@ -1394,7 +1408,7 @@ class Create:
             #resultingValues.append(interpretedData)
             # update index for next sensor...
             startofdata = startofdata + width
-        
+
         #if (distance != 0 or angle != 0):
         #    self._integrateNextOdometricStepCreate(distance,angle)
         if update_pose == True:
@@ -1413,10 +1427,10 @@ class Create:
         self._write( FULL )
         time.sleep(0.03)
         self.sciMode = FULL_MODE
-        
+
         return
 
-    
+
     def toSafeMode(self):
         """ changes the state (from PASSIVE_MODE or FULL_MODE)
         to SAFE_MODE
@@ -1433,13 +1447,13 @@ class Create:
         return
 
 
-    
+
     def getMode(self):
         """ returns one of OFF_MODE, PASSIVE_MODE, SAFE_MODE, FULL_MODE """
         # but how right is it?
         return self.sciMode
 
-    
+
     def _setBaudRate(self, baudrate=10):
         """ sets the communications rate to the desired value """
         # check for OK value
@@ -1457,12 +1471,12 @@ class Create:
         elif baudrate == 57600: baudcode = 10
         elif baudrate == 115200: baudcode = 11
         else:
-            print 'The baudrate of', baudrate, 'in _setBaudRate'
-            print 'was not recognized. Not sending anything.'
+            print('The baudrate of', baudrate, 'in _setBaudRate')
+            print('was not recognized. Not sending anything.')
             return
         # otherwise, send off the message
         self._write( START )
-        self._write( chr(baudcode) )
+        self._write( bytes([baudcode]) )
         # the recommended pause
         time.sleep(0.1)
         # change the mode we think we're in...
@@ -1470,51 +1484,51 @@ class Create:
         # no response here, so we don't get any...
         return
 
-    
+
     # Some new stuff added by Sean
-    
+
     def _startScript(self, number_of_bytes):
         self._write( SCRIPT )
-        self._write( chr(number_of_bytes) )
+        self._write( bytes([number_of_bytes]) )
         return
-    
+
     def _endScript(self, timeout=-1.0):
         # issue the ENDSCRIPT command to start the script
         self._write( ENDSCRIPT )
         interval = 1.0
         total = 0.0
-        
+
         # strip out all existing crap
-        while(self.ser.read(8192) != ''):
+        while(self.ser.read(8192) != b''):
             continue
-        
+
         # poll
         while(timeout<0.0 or total < timeout):
             self._write(SENSORS)
-            self._write(chr(7))  # smallest packet value that I can tell
-            if self.ser.read(1) != '':
+            self._write(bytes([7]))  # smallest packet value that I can tell
+            if self.ser.read(1) != b'':
                 break
             time.sleep(interval - 0.5)
             total = total + interval
-    
+
         # strip out again, we buffered up lots of junk
-        while(self.ser.read(8192) != ''):
+        while(self.ser.read(8192) != b''):
             continue
-    
+
     def _waitForDistance(self, distance_mm):
         self._write(WAITDIST)
         leftHighVal, leftLowVal = _toTwosComplement2Bytes( distance_mm )
-        self._write( chr(leftHighVal) )
-        self._write( chr(leftLowVal) )
+        self._write( bytes([leftHighVal]) )
+        self._write( bytes([leftLowVal]) )
         return
-    
+
     def _waitForAngle(self, angle_deg):
         self._write(WAITANGLE)
         leftHighVal, leftLowVal = _toTwosComplement2Bytes( angle_deg )
-        self._write( chr(leftHighVal) )
-        self._write( chr(leftLowVal) )
+        self._write( bytes([leftHighVal]) )
+        self._write( bytes([leftLowVal]) )
         return
-    
+
     def turn(self, angle_deg, deg_per_sec=20):
         if angle_deg==0:
             return
@@ -1551,7 +1565,7 @@ class Create:
 
         e.g. cliffState = robot.senseFunc(create.CLIFF_FRONT_LEFT_SIGNAL)
              info = cliffState()
-             
+
         No added functionality, just nicer to look at."""
         f = lambda: self.sensors([sensorName])[sensorName]
         return f
@@ -1560,7 +1574,7 @@ class Create:
         """Have the robot continue what it's doing until some halting
         criterion is met, determined by a repeated polling of
         sensorFunc until it's comparison (a function) to value is true.
-        
+
         e.g. greater = lambda a,b: a > b
              bumpSense = robot.sensorFunc(create.LEFT_BUMP)
 
@@ -1571,21 +1585,21 @@ class Create:
         """
         while (not comparison(sensorFunc(), value)):
             time.sleep(0.05)
-    
-    
+
+
 
     # Some new stuff added by PaperPieceCode
-    
+
     #Change Time of Roomba internal Clock to System-Time over Serial Port
-    def change_Time():
-        self.write(START)
-        self.write(CHANGE_TIME)
+    def change_Time(self):
+        self._write(START)
+        self._write(CHANGE_TIME)
         weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
         i = 0
         now = datetime.datetime.now()
         for day in weekdays:
-            if datetime.datetime.today().strftime('%A') == day: daycode = chr(i)
+            if datetime.datetime.today().strftime('%A') == day: daycode = bytes([i])
             i += 1
-        self.write(daycode)
-        self.write(chr(now.hour))
-        self.write(chr(now.minute))
+        self._write(daycode)
+        self._write(bytes([now.hour]))
+        self._write(bytes([now.minute]))

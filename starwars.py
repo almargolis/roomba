@@ -1,11 +1,15 @@
 # Taken from
 # https://gist.github.com/thenoviceoof/5465084
 # but modified to work on my Roomba 770
+#
+# Usage: python starwars.py [port]
+#   port is optional - auto-detects if not provided.
 
+import sys
 import time
 import create
 
-ROOMBA_PORT = "/dev/tty.usbserial-DA017V6X"
+ROOMBA_PORT = sys.argv[1] if len(sys.argv) > 1 else None
 
 # define silence
 r = 30
@@ -46,11 +50,11 @@ fis6 = ges6 = 90
 # define some note lengths
 # change the top MEASURE (4/4 time) to get faster/slower speeds
 MEASURE = 160
-HALF = MEASURE/2
-Q = MEASURE/4
-E = MEASURE/8
-Ed = MEASURE*3/16
-S = MEASURE/16
+HALF = MEASURE//2
+Q = MEASURE//4
+E = MEASURE//8
+Ed = MEASURE*3//16
+S = MEASURE//16
 
 MEASURE_TIME = MEASURE/64.
 
@@ -99,6 +103,7 @@ def play_starwars(robot):
   print("done")
 
 robot = create.Create(ROOMBA_PORT)
+
 robot.toSafeMode()
 play_starwars(robot)
 robot.close()

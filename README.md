@@ -1,47 +1,71 @@
 # Python Roomba
-Python 2.7 scripts to control the Roomba via serial cable. This work is based on the script from [this](http://web.archive.org/web/20160827153405/http://cs.gmu.edu/~zduric/cs101/pmwiki.php/Main/APITutorial) course. I adjusted it a bit to get access to the light bump in the Create 2 and my Roomba 770.
+Python 3 scripts to control the Roomba via serial cable. This work is based on the script from [this](http://web.archive.org/web/20160827153405/http://cs.gmu.edu/~zduric/cs101/pmwiki.php/Main/APITutorial) course. I adjusted it a bit to get access to the light bump in the Create 2 and my Roomba 770.
+
+Ported to Python 3 from the original Python 2.7 code by [Martin Schaef](https://github.com/martinschaef/roomba).
+
+### Files
+
+- **`create.py`** — Library module. Provides the `Create` class that handles all serial communication with the Roomba. Not run directly.
+- **`game.py`** — Pygame-based controller. Opens a window to drive the Roomba with w/a/s/d and displays live sensor data.
+- **`starwars.py`** — Plays the Star Wars Imperial March through the Roomba's speaker.
 
 ### Dependencies
-You need pyserial to run this script.
 
-    pip install pyserial
-    
-or
-    
-    easy_install pyserial
+    pip install pyserial pygame-ce
 
-### Tester
-I added a file to control the roomba with the wasd-keys. For that you also need pygame installed.
-Just run 
+(`pygame-ce` is the community edition of pygame, required for Python 3.14+ support.)
+
+### Running
+
+Both executables auto-detect the serial port. Just plug in the USB cable and run:
 
     python game.py
-    
-and a window with some information about the current sensor values like the one below:
+    python starwars.py
 
-![game.pu](./img/screen.png "Screenshot")
+To specify a port explicitly, pass it as an argument:
 
-Move the Roomba around with w/a/s/d.
+    python game.py /dev/ttyUSB0
+    python starwars.py /dev/tty.usbserial-XXXXXXXX
+
+If no port is given, the scripts scan `/dev/` for `tty.usbserial-*` (macOS) and `ttyUSB*` (Linux/RPi). If zero or multiple ports are found, an error message is printed with instructions.
+
+### Game controls
+
+- **w/a/s/d** — Drive forward/left/back/right
+- **Up/Down** — Adjust speed
+- **m** — Main brush (Shift+m to reverse)
+- **o** — Side brush (Shift+o to reverse)
+- **v** — Vacuum
+- **Space** — Reset position estimate
+- **Esc** — Quit
 
 ### Use as library
 
-The main class is create.py which contains everything to talk to the Roomba. To use it write sth like:
+`create.py` contains the `Create` class for talking to the Roomba:
 
     import create
     import time
-    robot = create.Create(ROOMBA_PORT)
-    robot.printSensors() # debug output
-    wall_fun = robot.senseFunc(create.WALL_SIGNAL) # get a callback for a sensor.
-    print (wall_fun()) # print a sensor value.
+    robot = create.Create()              # auto-detect port
+    robot = create.Create('/dev/ttyUSB0') # or specify port
+    robot.printSensors()
+    wall_fun = robot.senseFunc(create.WALL_SIGNAL)
+    print(wall_fun())
     robot.toSafeMode()
-    robot.go(0,100) # spin
+    robot.go(0, 100)  # spin
     time.sleep(2.0)
     robot.close()
 
 For more information read the original [tutorial](http://web.archive.org/web/20160827153405/http://cs.gmu.edu/~zduric/cs101/pmwiki.php/Main/APITutorial). The list of all available sensors is [here](https://github.com/martinschaef/roomba/blob/master/create.py#L70).
 
-### My setup
+### Setup
 
-I tested these scripts using this [cable](http://store.irobot.com/communication-cable-create-2/product.jsp?productId=54235746) and a Roomba 770. I tested the code on a Mac and on a RaspberryPi with debian (you need to change the PORT to tty.USB0 on the Pi) If the Roomba does not connect properly, check the cable first, then check if the port is correct, and then check if the baud rate in create.py is correct.
+Tested with a Roomba 770 using the iRobot [serial cable](http://store.irobot.com/communication-cable-create-2/product.jsp?productId=54235746) on macOS and Raspberry Pi.
+
+**Serial port names by platform:**
+- **macOS:** `/dev/tty.usbserial-XXXXXXXX`
+- **Raspberry Pi / Linux:** `/dev/ttyUSB0`
+
+If the Roomba does not connect properly, check the cable first, then check if the port is correct, and then check if the baud rate in create.py is correct.
 
 ### Known issues
 
