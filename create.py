@@ -154,15 +154,14 @@ PLAY_BUTTON = 109
 #                    0 1 2 3 4 5 6 7 8 9101112131415161718192021222324252627282930313233343536373839404142434445464748495051
 SENSOR_DATA_WIDTH = [0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,2,2,1,2,2,1,2,2,2,2,2,2,2,1,2,1,1,1,1,1,2,2,2,2,2,2,1,2,2,2,2,2,2]
 
-#The original value was 258.0 but my roomba has 235.0
+# Distance between wheels in mm. The Create 2 spec says 235mm.
+# To calibrate for your specific robot: have it spin 360 degrees and
+# measure the actual rotation. If it over-rotates, increase WHEEL_SPAN;
+# if it under-rotates, decrease it.
 WHEEL_SPAN = 235.0
 WHEEL_DIAMETER = 72.0
 TICK_PER_REVOLUTION = 508.8 # original 508.8
 TICK_PER_MM = TICK_PER_REVOLUTION/(math.pi*WHEEL_DIAMETER)
-
-# on my floor, a full turn is measured as sth like 450 deg
-# add an error to the computation to account for that.
-ANGULAR_ERROR = 360.0/450.0
 
 # for printing the SCI modes
 def modeStr( mode ):
@@ -609,16 +608,15 @@ class Create:
 
         distance = (left_mm + right_mm) / 2.0;
         dAngle = (right_mm - left_mm) / WHEEL_SPAN
-        dAngle *= ANGULAR_ERROR
+
+        # Use midpoint heading for the position update (standard
+        # differential-drive odometry) to reduce drift during turns.
+        mid_theta = self.thrPose + dAngle / 2.0
         self.thrPose += dAngle
+        self.thrPose = math.atan2(math.sin(self.thrPose), math.cos(self.thrPose))
 
-        if self.thrPose > 100*math.pi:
-            self.thrPose -= 101*math.pi
-        if self.thrPose < -100*math.pi:
-            self.thrPose += 101*math.pi
-
-        self.xPose += distance * math.cos(self.thrPose)
-        self.yPose += distance * math.sin(self.thrPose)
+        self.xPose += distance * math.cos(mid_theta)
+        self.yPose += distance * math.sin(mid_theta)
 
         self.leftEncoder_old = self.leftEncoder
         self.rightEncoder_old = self.rightEncoder
@@ -627,27 +625,19 @@ class Create:
     def _integrateNextOdometricStepCreate(self, distance, rawAngle):
         """ integrateNextOdometricStep adds the reported inputs
         distance in mm
-        rawAngle in degrees
+        rawAngle: the SCI angle value, which is NOT in degrees. Per the
+            SCI spec, it is "(right wheel distance - left wheel distance) / 2"
+            in mm. Convert to radians via: angle_rad = 2 * rawAngle / WHEEL_SPAN
         to the estimate of the robot's global pose
+
+        NOTE: This method is currently unused (commented out in _readSensorList).
+        The active odometry path uses _integrateNextEncoderStep instead.
         """
-        # OK, so this _should_ be easy
-        # distance is, supposedly, the arc length that the center
-        #              of the robot has traveled (the average of
-        #              the two wheel's linear distances)
-        #
-        # rawAngle is, supposedly, the (RightWheel-LeftWheel)/2.0
-        #
-        # the distance (diameter) between the two wheels is 258mm
-        #     keep in mind that the robot's physical diameter is larger ~
-        #
-        # 0.5*258 == 129mm radius
-        #
-        # perhaps there's nothing to do...
         if distance == 0 and rawAngle == 0:
             return
-        print(rawAngle)
-        # then again, maybe there is something to do...
-        dthr = math.radians(rawAngle)  # angle traveled
+        # SCI angle is a distance difference in mm, not degrees.
+        # Convert to radians: angle_rad = 2 * rawAngle / wheelbase
+        dthr = 2.0 * rawAngle / WHEEL_SPAN  # angle traveled in radians
         d = distance              # distance traveled
         # compute offsets in the local coordinate system,
         # with the x-axis pointing in the direction the robot was

@@ -73,6 +73,6 @@ Log out and back in (or reboot) for this to take effect. Without this you'll get
 
 If the Roomba does not connect properly, check the cable first, then check if the port is correct, and then check if the baud rate in create.py is correct.
 
-### Known issues
+### Odometry calibration
 
-The odometer data is nonsense. I assume that there are bugs in the computation because its off way too much to count it as cumulative error.
+Encoder-based odometry will always drift over time, but it should be reasonable for short distances. If rotation angles are consistently off, adjust the `WHEEL_SPAN` constant in `create.py` — increase it if the robot over-rotates, decrease it if it under-rotates. The default of 235mm matches the Create 2 spec but the effective wheelbase varies with floor surface and tire wear.
