@@ -63,3 +63,6 @@ target/
 
 # Virtual environment
 venv/
+
+# Large binary files
+*.pdf
