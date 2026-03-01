@@ -48,7 +48,7 @@ tests/
 
 - **`create.py`** — Core library. The `Create` class wraps pyserial to send OI protocol commands (opcode bytes) and parse sensor responses. Module-level constants define opcodes (START, DRIVE, SENSORS, etc.) and sensor IDs (BUMPS_AND_WHEEL_DROPS, WALL_SIGNAL, etc.). `SensorFrame` is a data struct for sensor snapshots. Helper functions handle two's-complement byte encoding. `find_port()` does serial port auto-detection.
 
-- **`game.py`** — Pygame GUI that instantiates `Create`, polls sensors in a game loop, and renders a top-down Roomba diagram with live sensor values. Keyboard input maps to `robot.go()` and `robot.motors()` calls. Entry point: `main()`.
+- **`game.py`** — Pygame GUI that instantiates `Create`, polls sensors in a game loop, and renders a top-down Roomba diagram with live sensor values. Keyboard input maps to `robot.go_differential()` and `robot.motors()` calls. Entry point: `main()`.
 
 - **`starwars.py`** — Defines MIDI notes and durations, uploads song chunks via `robot.setSong()`, and plays them sequentially with timed `time.sleep()` gaps. Entry point: `main()`.
 
@@ -60,6 +60,16 @@ All OI commands are sent as raw bytes via `self._write(bytes([opcode]))`. When m
 - Serial reads return `bytes` objects; iterate directly for int values (no `ord()` needed)
 - Compare empty reads against `b''`, not `''`
 - Use `//` for integer division (e.g., note durations in starwars.py)
+
+## Units Convention
+
+All angles in the public API use **radians** (standard engineering practice):
+- `go_differential(cm_per_sec, rad_per_sec)` — drive command (renamed from `go()`)
+- `turn(angle_rad, rad_per_sec)` — scripted turn
+- `getPose(dist='cm')` — returns `(x, y, th_radians)`
+- `setPose(x, y, th_radians, dist='cm')` — sets internal odometry
+
+Degrees are only used at the OI protocol boundary (e.g., `_waitForAngle` converts radians to degrees for the WAITANGLE opcode).
 
 ## Odometry Calibration
 
