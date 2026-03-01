@@ -2,14 +2,13 @@
 # https://gist.github.com/thenoviceoof/5465084
 # but modified to work on my Roomba 770
 #
-# Usage: python starwars.py [port]
+# Usage: roomba-starwars [port]
 #   port is optional - auto-detects if not provided.
 
 import sys
 import time
-import create
 
-ROOMBA_PORT = sys.argv[1] if len(sys.argv) > 1 else None
+from . import create
 
 # define silence
 r = 30
@@ -102,8 +101,16 @@ def play_starwars(robot):
   time.sleep(MEASURE_TIME*1.76)
   print("done")
 
-robot = create.Create(ROOMBA_PORT)
 
-robot.toSafeMode()
-play_starwars(robot)
-robot.close()
+def main():
+  ROOMBA_PORT = sys.argv[1] if len(sys.argv) > 1 else None
+  robot = create.Create(ROOMBA_PORT)
+  robot.toSafeMode()
+  try:
+    play_starwars(robot)
+  finally:
+    robot.close()
+
+
+if __name__ == '__main__':
+  main()

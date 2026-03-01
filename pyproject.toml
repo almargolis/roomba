@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "create-serial"
+version = "0.1.0"
+description = "Python library for controlling iRobot Roomba/Create via serial Open Interface"
+readme = "README.md"
+license = "Artistic-2.0"
+requires-python = ">=3.8"
+dependencies = ["pyserial"]
+
+[project.optional-dependencies]
+game = ["pygame-ce"]
+
+[project.scripts]
+roomba-game = "create_serial.game:main"
+roomba-starwars = "create_serial.starwars:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

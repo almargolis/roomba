@@ -1,13 +1,22 @@
-# Python Roomba
-Python 3 scripts to control the Roomba via serial cable. This work is based on the script from [this](http://web.archive.org/web/20160827153405/http://cs.gmu.edu/~zduric/cs101/pmwiki.php/Main/APITutorial) course. I adjusted it a bit to get access to the light bump in the Create 2 and my Roomba 770.
+# create-serial
+
+Python 3 library for controlling iRobot Roomba/Create via the serial Open Interface (OI) protocol over USB cable. This work is based on the script from [this](http://web.archive.org/web/20160827153405/http://cs.gmu.edu/~zduric/cs101/pmwiki.php/Main/APITutorial) course. I adjusted it a bit to get access to the light bump in the Create 2 and my Roomba 770.
 
 Ported to Python 3 from the original Python 2.7 code by [Martin Schaef](https://github.com/martinschaef/roomba).
 
+### Installation
+
+    pip install create-serial
+
+To include pygame for the game controller:
+
+    pip install create-serial[game]
+
 ### Files
 
-- **`create.py`** — Library module. Provides the `Create` class that handles all serial communication with the Roomba. Not run directly.
-- **`game.py`** — Pygame-based controller. Opens a window to drive the Roomba with w/a/s/d and displays live sensor data.
-- **`starwars.py`** — Plays the Star Wars Imperial March through the Roomba's speaker.
+- **`src/create_serial/create.py`** — Library module. Provides the `Create` class that handles all serial communication with the Roomba. Not run directly.
+- **`src/create_serial/game.py`** — Pygame-based controller. Opens a window to drive the Roomba with w/a/s/d and displays live sensor data.
+- **`src/create_serial/starwars.py`** — Plays the Star Wars Imperial March through the Roomba's speaker.
 
 ### Dependencies
 
@@ -17,15 +26,20 @@ Ported to Python 3 from the original Python 2.7 code by [Martin Schaef](https://
 
 ### Running
 
-Both executables auto-detect the serial port. Just plug in the USB cable and run:
+Both commands auto-detect the serial port. Just plug in the USB cable and run:
 
-    python game.py
-    python starwars.py
+    roomba-game
+    roomba-starwars
 
 To specify a port explicitly, pass it as an argument:
 
-    python game.py /dev/ttyUSB0
-    python starwars.py /dev/tty.usbserial-XXXXXXXX
+    roomba-game /dev/ttyUSB0
+    roomba-starwars /dev/tty.usbserial-XXXXXXXX
+
+You can also run as modules from a development checkout:
+
+    python -m create_serial.game [/dev/ttyUSB0]
+    python -m create_serial.starwars [/dev/ttyUSB0]
 
 If no port is given, the scripts scan `/dev/` for `tty.usbserial-*` (macOS) and `ttyUSB*` (Linux/RPi). If zero or multiple ports are found, an error message is printed with instructions.
 
@@ -41,14 +55,13 @@ If no port is given, the scripts scan `/dev/` for `tty.usbserial-*` (macOS) and 
 
 ### Use as library
 
-`create.py` contains the `Create` class for talking to the Roomba:
-
-    import create
+    from create_serial import Create, WALL_SIGNAL
     import time
-    robot = create.Create()              # auto-detect port
-    robot = create.Create('/dev/ttyUSB0') # or specify port
+
+    robot = Create()              # auto-detect port
+    robot = Create('/dev/ttyUSB0') # or specify port
     robot.printSensors()
-    wall_fun = robot.senseFunc(create.WALL_SIGNAL)
+    wall_fun = robot.senseFunc(WALL_SIGNAL)
     print(wall_fun())
     robot.toSafeMode()
     robot.go(0, 100)  # spin
