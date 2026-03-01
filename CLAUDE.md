@@ -22,6 +22,9 @@ python -m pytest tests/ -v
 # Pygame controller (drive with w/a/s/d, live sensor display)
 roomba-game [/dev/ttyUSB0]
 
+# Terminal controller (works over SSH, no display needed)
+roomba-cli [/dev/ttyUSB0]
+
 # Play Star Wars Imperial March through Roomba speaker
 roomba-starwars [/dev/ttyUSB0]
 ```
@@ -37,6 +40,7 @@ src/create_serial/
 ├── __init__.py    # Re-exports public API from create module
 ├── create.py      # Core library
 ├── game.py        # Pygame GUI controller
+├── cli.py         # Terminal controller (no display needed)
 └── starwars.py    # Star Wars music player
 tests/
 ├── test_utils.py
@@ -49,6 +53,8 @@ tests/
 - **`create.py`** — Core library. The `Create` class wraps pyserial to send OI protocol commands (opcode bytes) and parse sensor responses. Module-level constants define opcodes (START, DRIVE, SENSORS, etc.) and sensor IDs (BUMPS_AND_WHEEL_DROPS, WALL_SIGNAL, etc.). `SensorFrame` is a data struct for sensor snapshots. Helper functions handle two's-complement byte encoding. `find_port()` does serial port auto-detection.
 
 - **`game.py`** — Pygame GUI that instantiates `Create`, polls sensors in a game loop, and renders a top-down Roomba diagram with live sensor values. Keyboard input maps to `robot.go_differential()` and `robot.motors()` calls. Entry point: `main()`.
+
+- **`cli.py`** — Terminal-based controller using raw stdin. Works over SSH without a display server. Same keyboard controls as game.py but prints only changed sensor values. Entry point: `main()`.
 
 - **`starwars.py`** — Defines MIDI notes and durations, uploads song chunks via `robot.setSong()`, and plays them sequentially with timed `time.sleep()` gaps. Entry point: `main()`.
 
