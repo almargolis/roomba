@@ -16,6 +16,7 @@ To include pygame for the game controller:
 
 - **`src/create_serial/create.py`** — Library module. Provides the `Create` class that handles all serial communication with the Roomba. Not run directly.
 - **`src/create_serial/game.py`** — Pygame-based controller. Opens a window to drive the Roomba with w/a/s/d and displays live sensor data.
+- **`src/create_serial/cli.py`** — Terminal-based controller. Works over SSH without a display server.
 - **`src/create_serial/starwars.py`** — Plays the Star Wars Imperial March through the Roomba's speaker.
 
 ### Dependencies
@@ -26,19 +27,22 @@ To include pygame for the game controller:
 
 ### Running
 
-Both commands auto-detect the serial port. Just plug in the USB cable and run:
+All commands auto-detect the serial port. Just plug in the USB cable and run:
 
     roomba-game
+    roomba-cli
     roomba-starwars
 
 To specify a port explicitly, pass it as an argument:
 
     roomba-game /dev/ttyUSB0
+    roomba-cli /dev/tty.usbserial-XXXXXXXX
     roomba-starwars /dev/tty.usbserial-XXXXXXXX
 
 You can also run as modules from a development checkout:
 
     python -m create_serial.game [/dev/ttyUSB0]
+    python -m create_serial.cli [/dev/ttyUSB0]
     python -m create_serial.starwars [/dev/ttyUSB0]
 
 If no port is given, the scripts scan `/dev/` for `tty.usbserial-*` (macOS) and `ttyUSB*` (Linux/RPi). If zero or multiple ports are found, an error message is printed with instructions.
@@ -56,7 +60,7 @@ If no port is given, the scripts scan `/dev/` for `tty.usbserial-*` (macOS) and 
 ### Use as library
 
     from create_serial import Create, WALL_SIGNAL
-    import time
+    import math, time
 
     robot = Create()              # auto-detect port
     robot = Create('/dev/ttyUSB0') # or specify port
@@ -66,7 +70,51 @@ If no port is given, the scripts scan `/dev/` for `tty.usbserial-*` (macOS) and 
     robot.toSafeMode()
     robot.go_differential(0, 1.75)  # spin at ~1.75 rad/sec
     time.sleep(2.0)
+    robot.go_differential(10, 0)    # drive forward at 10 cm/sec
+    time.sleep(2.0)
+    robot.stop()
     robot.close()
+
+### API reference
+
+All angles use **radians**. Distances use centimeters by default.
+
+#### Driving
+
+- **`go_differential(cm_per_sec=0, rad_per_sec=0)`** — Set translational and rotational velocity. Positive `rad_per_sec` turns left (CCW).
+- **`stop()`** — Stop all movement (equivalent to `go_differential(0, 0)`).
+- **`setWheelVelocities(left_cm_sec, right_cm_sec)`** — Set each wheel independently (capped at ±50 cm/sec).
+
+#### Scripted moves
+
+- **`move(distance_cm, cm_per_sec=10)`** — Drive a fixed distance. Blocks until complete.
+- **`turn(angle_rad, rad_per_sec=0.35)`** — Rotate a fixed angle. Blocks until complete.
+
+#### Odometry
+
+- **`getPose(dist='cm')`** — Returns `(x, y, th)` where `th` is in radians. Use `dist='mm'` for millimeters.
+- **`setPose(x, y, th, dist='cm')`** — Set the internal odometry estimate. `th` is in radians.
+- **`resetPose()`** — Reset odometry to `(0, 0, 0)`.
+
+#### Sensors
+
+- **`sensors(list_of_sensors)`** — Poll sensors. Pass a list of sensor IDs (e.g. `[WALL_SIGNAL, LEFT_BUMP]`) or a frame number (0–6). Returns a dict.
+- **`printSensors()`** — Poll and print all sensor values.
+- **`senseFunc(sensor_id)`** — Returns a callable that polls and returns a single sensor value.
+
+#### Peripherals
+
+- **`motors(side_brush=0, main_brush=0, vacuum=0)`** — Control cleaning motors. Values: -1 (reverse), 0 (off), 1 (forward).
+- **`setLEDs(power_color, power_intensity, play, advance)`** — Set LEDs. Power color/intensity 0–255, play/advance 0 or 1.
+- **`setSong(songNumber, songDataList)`** — Store a song (0–15). Data is list of `(midi_note, duration)` tuples.
+- **`playSong(list_of_notes)`** — Store and play a song immediately.
+- **`playNote(noteNumber, duration)`** — Play a single MIDI note.
+
+#### Mode control
+
+- **`toSafeMode()`** — Enter safe mode (stops on cliff/wheel drop).
+- **`toFullMode()`** — Enter full mode (no safety cutoffs).
+- **`close()`** — Return to passive mode and close the serial port.
 
 For more information read the original [tutorial](http://web.archive.org/web/20160827153405/http://cs.gmu.edu/~zduric/cs101/pmwiki.php/Main/APITutorial). The list of all available sensors is [here](https://github.com/martinschaef/roomba/blob/master/create.py#L70).
 
