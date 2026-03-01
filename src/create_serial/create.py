@@ -338,8 +338,6 @@ class SensorFrame:
         s += 'distance: ' + str(self.distance) + '\n'
         s += 'rawAngle: ' + str(self.rawAngle) + '\n'
         s += 'angleInRadians: ' + str(self.angleInRadians) + '\n'
-        # no data member needed for this next line
-        s += 'angleInDegrees: ' + str(math.degrees(self.angleInRadians)) + '\n'
         s += 'chargingState: ' + str(self.chargingState) + '\n'
         s += 'voltage: ' + str(self.voltage) + '\n'
         s += 'current: ' + str(self.current) + '\n'
@@ -540,11 +538,11 @@ class Create:
             print(byte[0])
         self.ser.write(byte)
 
-    def getPose(self, dist='cm', angle='deg'):
+    def getPose(self, dist='cm'):
         """ getPose returns the current estimate of the
         robot's global pose
         dist may be 'cm' or 'mm'
-        angle may be 'deg' or 'rad'
+        angle is always in radians
         """
         x = 0; y = 0; th = 0
         if dist == 'cm':
@@ -552,31 +550,24 @@ class Create:
         else:
             x = self.xPose; y = self.yPose
 
-        if angle == 'deg':
-            th = math.degrees(self.thrPose)
-        else:
-            th = self.thrPose
+        th = self.thrPose
 
         return (x,y,th)
 
 
-    def setPose(self, x, y, th, dist='cm', angle='deg'):
+    def setPose(self, x, y, th, dist='cm'):
         """ setPose sets the internal odometry to the input values
-        x: global x in mm
-        y: global y in mm
+        x: global x in cm (or mm if dist='mm')
+        y: global y in cm (or mm if dist='mm')
         th: global th in radians
         dist: 'cm' or 'mm' for x and y
-        angle: 'deg' or 'rad' for th
         """
         if dist == 'cm':
             self.xPose = x*10.0; self.yPose = y*10.0
         else:
             self.xPose = x; self.yPose = y
 
-        if angle == 'deg':
-            self.thrPose = math.radians(th)
-        else:
-            self.thrPose = th
+        self.thrPose = th
 
 
     def resetPose(self):
@@ -702,8 +693,8 @@ class Create:
         self._write( bytes([leftLowVal]) )
 
     def stop(self):
-        """ stop calls go(0,0) """
-        self.go(0,0)
+        """ stop calls go_differential(0,0) """
+        self.go_differential(0,0)
         # we've gotta update pose information
         foo = self.sensors([POSE])
 
@@ -731,19 +722,17 @@ class Create:
         self._write( MOTORS )
         self._write( byteToWrite)
 
-    def go( self, cm_per_sec=0, deg_per_sec=0 ):
-        """ go(cmpsec, degpsec) sets the robot's velocity to
-        cmpsec centimeters per second
-        degpsec degrees per second
-        go() is equivalent to go(0,0)
+    def go_differential( self, cm_per_sec=0, rad_per_sec=0 ):
+        """ go_differential(cm_per_sec, rad_per_sec) sets the robot's velocity to
+        cm_per_sec centimeters per second
+        rad_per_sec radians per second
+        go_differential() is equivalent to go_differential(0,0)
         """
         # need to convert to the roomba's drive parameters
         #
         # for now, just one or the other...
         if cm_per_sec == 0:
             # just handle rotation
-            # convert to radians
-            rad_per_sec = math.radians(deg_per_sec)
             # make sure the direction is correct
             if rad_per_sec >= 0:  dirstr = 'CCW'
             else: dirstr = 'CW'
@@ -753,7 +742,7 @@ class Create:
             # send it off to the robot
             self._drive( vel_mm_sec, 0, dirstr )
 
-        elif deg_per_sec == 0:
+        elif rad_per_sec == 0:
             # just handle forward/backward translation
             vel_mm_sec = 10.0*cm_per_sec
             big_radius = 32767
@@ -762,7 +751,6 @@ class Create:
 
         else:
             # move in the appropriate arc
-            rad_per_sec = math.radians(deg_per_sec)
             vel_mm_sec = 10.0*cm_per_sec
             radius_mm = vel_mm_sec / rad_per_sec
             # check for extremes
@@ -1238,7 +1226,7 @@ class Create:
         print('              ADVANCE_BUTTON:', d[ADVANCE_BUTTON])
         print('                 POSE X (cm):', pose[0])
         print('                 POSE Y (cm):', pose[1])
-        print('               POSE TH (deg):', pose[2])
+        print('               POSE TH (rad):', pose[2])
         print('              CHARGING_STATE:', d[CHARGING_STATE])
         print('                     VOLTAGE:', d[VOLTAGE])
         print('                     CURRENT:', d[CURRENT])
@@ -1403,7 +1391,7 @@ class Create:
         #    self._integrateNextOdometricStepCreate(distance,angle)
         if update_pose == True:
              self._integrateNextEncoderStep()
-        self.sensord[POSE] = self.getPose(dist='cm',angle='deg')
+        self.sensord[POSE] = self.getPose(dist='cm')
 
 
 
@@ -1519,16 +1507,16 @@ class Create:
         self._write( bytes([leftLowVal]) )
         return
 
-    def turn(self, angle_deg, deg_per_sec=20):
-        if angle_deg==0:
+    def turn(self, angle_rad, rad_per_sec=math.radians(20)):
+        if angle_rad==0:
             return
-        if deg_per_sec==0:
-            deg_per_sec=20
-        if (angle_deg < 0 and deg_per_sec > 0) or (angle_deg > 0 and deg_per_sec < 0):
-            deg_per_sec = 0 - deg_per_sec
+        if rad_per_sec==0:
+            rad_per_sec=math.radians(20)
+        if (angle_rad < 0 and rad_per_sec > 0) or (angle_rad > 0 and rad_per_sec < 0):
+            rad_per_sec = -rad_per_sec
         self._startScript(13)
-        self.go(0, deg_per_sec)
-        self._waitForAngle(angle_deg)
+        self.go_differential(0, rad_per_sec)
+        self._waitForAngle(int(math.degrees(angle_rad)))
         self.stop()
         self._endScript()
         #self.sensors([POSE])   # updated by Sean
@@ -1541,7 +1529,7 @@ class Create:
         if (distance_cm < 0 and cm_per_sec > 0) or (distance_cm > 0 and cm_per_sec < 0):
             cm_per_sec = 0 - cm_per_sec
         self._startScript(13)
-        self.go(cm_per_sec, 0)
+        self.go_differential(cm_per_sec, 0)
         self._waitForDistance(distance_cm*10)
         self.stop()
         self._endScript()
@@ -1568,7 +1556,7 @@ class Create:
         e.g. greater = lambda a,b: a > b
              bumpSense = robot.sensorFunc(create.LEFT_BUMP)
 
-             robot.go(10)
+             robot.go_differential(10)
              robot.sleepTill(bumpSense, greater, 0)
 
         This will have the robot go until the left bump sensor is pushed.

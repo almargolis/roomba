@@ -8,6 +8,7 @@
 #   port is optional - auto-detects if not provided.
 # Control the Roomba with keyboard keys.
 # Only stdlib modules are used (no curses, no pygame).
+import math
 import select
 import sys
 import termios
@@ -18,7 +19,7 @@ from . import create
 
 
 MAX_FORWARD = 50   # cm per second
-MAX_ROTATION = 200 # degrees per second
+MAX_ROTATION = math.radians(200) # rad per second
 SPEED_INC = 10     # increment in percent
 
 SENSOR_NAMES = {
@@ -142,7 +143,7 @@ def main():
                     tty.setraw(sys.stdin.fileno())
 
                 if update_roomba:
-                    robot.go(robot_dir * fwd_speed, robot_rot * rot_speed)
+                    robot.go_differential(robot_dir * fwd_speed, robot_rot * rot_speed)
                     robot.motors(side_brush, main_brush, vacuum)
                     time.sleep(0.1)
 
@@ -171,7 +172,7 @@ def main():
         print("\nError:", err)
     finally:
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-        robot.go(0, 0)
+        robot.go_differential(0, 0)
         robot.close()
         print("\nDisconnected.")
 

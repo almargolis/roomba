@@ -64,7 +64,7 @@ If no port is given, the scripts scan `/dev/` for `tty.usbserial-*` (macOS) and 
     wall_fun = robot.senseFunc(WALL_SIGNAL)
     print(wall_fun())
     robot.toSafeMode()
-    robot.go(0, 100)  # spin
+    robot.go_differential(0, 1.75)  # spin at ~1.75 rad/sec
     time.sleep(2.0)
     robot.close()
 

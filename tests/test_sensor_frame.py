@@ -29,7 +29,6 @@ class TestSensorFrameInit(unittest.TestCase):
         self.assertIn('wallSensor:', s)
         self.assertIn('distance:', s)
         self.assertIn('angleInRadians:', s)
-        self.assertIn('angleInDegrees:', s)
         self.assertIn('voltage:', s)
         self.assertIn('charge:', s)
         self.assertIn('capacity:', s)

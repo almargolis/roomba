@@ -17,7 +17,7 @@ from . import create
 
 
 MAX_FORWARD = 50 # in cm per second
-MAX_ROTATION = 200 # in cm per second
+MAX_ROTATION = math.radians(200) # rad per second
 SPEED_INC = 10 # increment in percent
 
 
@@ -170,7 +170,7 @@ def main():
 						update_roomba = True
 
 			if update_roomba == True:
-				robot.go(robot_dir*FWD_SPEED,robot_rot*ROT_SPEED)
+				robot.go_differential(robot_dir*FWD_SPEED,robot_rot*ROT_SPEED)
 				robot.motors(side_brush, main_brush, vacuum)
 				time.sleep(0.1)
 
@@ -213,12 +213,12 @@ def main():
 			screen.blit(font.render("{}".format(sv(create.CLIFF_RIGHT_SIGNAL)), 1, (10, 10, 10)), (635, 73))
 
 			screen.blit(font.render(" Fwd speed: {:04.2f} cm/sec (change with Up/Down)".format(FWD_SPEED), 1, (10, 10, 10)), (50, 450))
-			screen.blit(font.render(" Rot speed: {:04.2f} cm/sec".format(ROT_SPEED), 1, (10, 10, 10)), (50, 470))
+			screen.blit(font.render(" Rot speed: {:04.2f} rad/sec".format(ROT_SPEED), 1, (10, 10, 10)), (50, 470))
 
 			px, py, th = robot.getPose()
 			screen.blit(font.render("Estimated X-Position: {:04.2f} (cm from start)".format(px), 1, (10, 10, 10)), (450, 450))
 			screen.blit(font.render("Estimated Y-Position: {:04.2f} (cm from start)".format(py), 1, (10, 10, 10)), (450, 470))
-			screen.blit(font.render("  Estimated Rotation: {:03.2f} (in degree)".format(th), 1, (10, 10, 10)), (450, 490))
+			screen.blit(font.render("  Estimated Rotation: {:03.2f} (rad)".format(th), 1, (10, 10, 10)), (450, 490))
 			screen.blit(font.render("       Dirt Detected: {}".format(sv(create.DIRT_DETECTED)), 1, (10, 10, 10)), (450, 510))
 
 			if sensor_error:
@@ -231,7 +231,7 @@ def main():
 	except Exception as err:
 		print(err)
 	finally:
-		robot.go(0,0)
+		robot.go_differential(0,0)
 		robot.close()
 
 

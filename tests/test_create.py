@@ -55,11 +55,11 @@ class TestCreateConstructor(unittest.TestCase):
         self.assertEqual(th, 0.0)
 
 
-class TestGo(unittest.TestCase):
-    def test_go_zero(self):
+class TestGoDifferential(unittest.TestCase):
+    def test_go_differential_zero(self):
         robot = make_robot()
         robot.ser.write.reset_mock()
-        robot.go(0, 0)
+        robot.go_differential(0, 0)
         # Should send DRIVE command with velocity 0 and direction CCW (radius=1)
         calls = robot.ser.write.call_args_list
         self.assertTrue(len(calls) > 0)
@@ -69,7 +69,7 @@ class TestGo(unittest.TestCase):
         robot.ser.write.reset_mock()
         robot.ser.read.return_value = b'\x00' * 4  # DISTANCE + ANGLE = 4 bytes
         robot.stop()
-        # stop() calls go(0,0) then sensors([POSE])
+        # stop() calls go_differential(0,0) then sensors([POSE])
         calls = robot.ser.write.call_args_list
         self.assertTrue(len(calls) > 0)
 
@@ -141,27 +141,28 @@ class TestSetSong(unittest.TestCase):
 
 
 class TestPose(unittest.TestCase):
-    def test_get_set_pose_cm_deg(self):
+    def test_get_set_pose_cm_rad(self):
         robot = make_robot()
-        robot.setPose(10, 20, 90, dist='cm', angle='deg')
-        x, y, th = robot.getPose(dist='cm', angle='deg')
+        import math
+        robot.setPose(10, 20, math.pi/2, dist='cm')
+        x, y, th = robot.getPose(dist='cm')
         self.assertAlmostEqual(x, 10.0)
         self.assertAlmostEqual(y, 20.0)
-        self.assertAlmostEqual(th, 90.0, places=1)
+        self.assertAlmostEqual(th, math.pi/2)
 
     def test_reset_pose(self):
         robot = make_robot()
-        robot.setPose(10, 20, 90)
+        robot.setPose(10, 20, 1.5)
         robot.resetPose()
         x, y, th = robot.getPose()
         self.assertEqual(x, 0.0)
         self.assertEqual(y, 0.0)
         self.assertEqual(th, 0.0)
 
-    def test_get_pose_mm_rad(self):
+    def test_get_pose_mm(self):
         robot = make_robot()
-        robot.setPose(100, 200, 1.5, dist='mm', angle='rad')
-        x, y, th = robot.getPose(dist='mm', angle='rad')
+        robot.setPose(100, 200, 1.5, dist='mm')
+        x, y, th = robot.getPose(dist='mm')
         self.assertAlmostEqual(x, 100.0)
         self.assertAlmostEqual(y, 200.0)
         self.assertAlmostEqual(th, 1.5)
